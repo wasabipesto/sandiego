@@ -13,9 +13,10 @@ def update_activity(conn):
 
     # get last row in table
     cursor = conn.cursor()
-    cursor.execute("SELECT time FROM activity ORDER BY time DESC LIMIT 1")
+    cursor.execute("SELECT time, android_detected_activity FROM activity ORDER BY time DESC LIMIT 1")
     result = cursor.fetchone()
     last_time = result[0]
+    last_state = result[1]
 
     # get data from api
     response = requests.get(
@@ -33,10 +34,11 @@ def update_activity(conn):
     
     # collate data to submit
     data_prep = [{'time': parser.isoparse(row['last_changed']), 'state': row['state']} for row in response[0] if row['state'] != 'unknown']
-    data_submit = [data_prep[0]]
-    for row in data_prep[1:]:
+    data_submit = [{'state':last_state}]
+    for row in data_prep:
         if row['state'] != data_submit[-1]['state']:
             data_submit.append(row)
+    data_submit.pop(0)
     
     # push data to database
     print('Inserting', len(data_submit), 'rows...')
