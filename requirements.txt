@@ -1,3 +1,5 @@
 requests
 apscheduler
 numpy
+psycopg2-binary
+python-dateutil
