@@ -1,5 +1,5 @@
-requests
-apscheduler
 numpy
 psycopg2-binary
+pytz
+requests
 python-dateutil
