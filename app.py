@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from datetime import datetime, timedelta
@@ -10,6 +11,40 @@ from dateutil import parser
 
 # set timezone
 tz = pytz.timezone('US/Eastern')
+
+def get_data_fitbit(url):
+    # load secrets file
+    with open('./secrets/fitbit.json', 'r') as file:
+        fitbit_secrets = json.load(file)
+
+    # pull data from api
+        response = requests.get(url, headers={'authorization': 'Bearer '+fitbit_secrets['access_token']})
+    
+    if response.status_code == 429:
+        raise Exception('Fitbit API rate-limited.')
+
+    if response.status_code == 401:
+        # request new key
+        response = requests.post(
+            'https://api.fitbit.com/oauth2/token',
+            headers={
+                'authorization': 'Basic '+fitbit_secrets['basic_token'],
+                'content-type': 'application/x-www-form-urlencoded',
+            },
+            data={
+                'grant_type': 'refresh_token',
+                'client_id': fitbit_secrets['client_id'],
+                'refresh_token': fitbit_secrets['refresh_token'],
+            }).json()
+
+        # update secrets file
+        fitbit_secrets.update({'access_token':response['access_token'],'refresh_token':response['refresh_token']})
+        with open('./secrets/fitbit.json', 'w') as file:
+            json.dump(fitbit_secrets, file)
+
+        # try again
+        response = requests.get(url, headers={'authorization': 'Bearer '+fitbit_secrets['access_token']})
+    return response.json()
 
 def update_activity(conn):
     print('Updating table: activity')
