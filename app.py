@@ -1,16 +1,11 @@
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-import numpy as np
 import psycopg2
-import pytz
 import requests
-from dateutil import parser
 
-# set timezone
-tz = pytz.timezone('US/Eastern')
 
 def get_data_fitbit(url):
     # load secrets file
@@ -18,7 +13,11 @@ def get_data_fitbit(url):
         fitbit_secrets = json.load(file)
 
     # pull data from api
-        response = requests.get(url, headers={'authorization': 'Bearer '+fitbit_secrets['access_token']})
+    response = requests.get(
+        url, 
+        headers={'authorization': 'Bearer '+fitbit_secrets['access_token']},
+        params={'timezone': 'UTC'},
+        )
     
     if response.status_code == 429:
         raise Exception('Fitbit API rate-limited.')
@@ -43,7 +42,11 @@ def get_data_fitbit(url):
             json.dump(fitbit_secrets, file)
 
         # try again
-        response = requests.get(url, headers={'authorization': 'Bearer '+fitbit_secrets['access_token']})
+        response = requests.get(
+            url, 
+            headers={'authorization': 'Bearer '+fitbit_secrets['access_token']},
+            params={'timezone': 'UTC'},
+            )
     return response.json()
 
 def update_activity(conn):
@@ -51,42 +54,47 @@ def update_activity(conn):
 
     # get last row in table
     cursor = conn.cursor()
-    cursor.execute('SELECT timestamp, android_detected_activity FROM activity ORDER BY timestamp DESC LIMIT 1')
+    cursor.execute('SELECT timestamp, android_detected_activity FROM personal_activity ORDER BY timestamp DESC LIMIT 1')
     result = cursor.fetchone()
-    last_time = result[0]
+    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
     last_state = result[1]
 
     # get data from api
     response = requests.get(
-        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.isoformat(),
         headers={
             'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
             'content-type': 'application/json',
         },
         params={
             'filter_entity_id': 'sensor.justin_pixel5_detected_activity',
-            'end_time': datetime.now().astimezone(tz).strftime('%Y-%m-%dT%H:%M:%S%z'),
+            'end_time': datetime.now(timezone.utc).isoformat(),
             'no_attributes': True
         }
         ).json()
     
     # collate data to submit
     acceptable_states = ['still', 'walking', 'running', 'in_vehicle']
-    data_prep = [{'time': parser.isoparse(row['last_changed']), 'state': row['state']} for row in response[0] if row['state'] in acceptable_states]
+    data_prep = [{'time': datetime.fromisoformat(row['last_changed']), 'state': row['state']} for row in response[0] if row['state'] in acceptable_states]
     data_submit = [{'state':last_state}]
     for row in data_prep:
         if row['state'] != data_submit[-1]['state']:
             data_submit.append(row)
     data_submit.pop(0)
+
+    if len(data_submit) == 0:
+        cursor.close()
+        return
     
     # push data to database
     print('Inserting', len(data_submit), 'rows...')
     for row in data_submit:
-        cursor.execute('INSERT INTO activity (timestamp, android_detected_activity) VALUES (%s, %s)',
-            (row['time'], row['state'])
+        cursor.execute('INSERT INTO personal_activity (timestamp, android_detected_activity) VALUES (%s, %s)',
+            (row['time'].timestamp(), row['state'])
             )
     conn.commit()
     cursor.close()
+    return
 
 def update_location(conn):
     print('Updating table: location')
@@ -95,25 +103,25 @@ def update_location(conn):
     cursor = conn.cursor()
     cursor.execute('SELECT timestamp, hass_detected_zone FROM location ORDER BY timestamp DESC LIMIT 1')
     result = cursor.fetchone()
-    last_time = result[0]
+    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
     last_state = result[1]
 
     # get data from api
     response = requests.get(
-        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.isoformat(),
         headers={
             'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
             'content-type': 'application/json',
         },
         params={
             'filter_entity_id': 'person.justin',
-            'end_time': datetime.now().astimezone(tz).strftime('%Y-%m-%dT%H:%M:%S%z'),
+            'end_time': datetime.now(timezone.utc).isoformat(),
             'no_attributes': True
         }
         ).json()
     
     # collate data to submit
-    data_prep = [{'time': parser.isoparse(row['last_changed']), 'state': row['state']} for row in response[0]]
+    data_prep = [{'time': datetime.fromisoformat(row['last_changed']), 'state': row['state']} for row in response[0]]
     data_submit = [{'state':last_state}]
     for row in data_prep:
         if row['state'] != data_submit[-1]['state']:
@@ -124,10 +132,11 @@ def update_location(conn):
     print('Inserting', len(data_submit), 'rows...')
     for row in data_submit:
         cursor.execute('INSERT INTO location (timestamp, hass_detected_zone) VALUES (%s, %s)',
-            (row['time'], row['state'])
+            (row['time'].timestamp(), row['state'])
             )
     conn.commit()
     cursor.close()
+    return
 
 def update_device_active(conn):
     print('Updating table: device_active')
@@ -166,11 +175,11 @@ def update_device_active(conn):
     cursor = conn.cursor()
     cursor.execute('SELECT timestamp FROM device_active ORDER BY timestamp DESC LIMIT 1')
     result = cursor.fetchone()
-    last_time = result[0]
+    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
 
     # get data from api
     response = requests.get(
-        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.isoformat(),
         headers={
             'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
             'content-type': 'application/json',
@@ -180,7 +189,7 @@ def update_device_active(conn):
                 'binary_sensor.justin_pixel5_device_locked,'+
                 'binary_sensor.office_door,'+
                 'media_player.fireplace_tv',
-            'end_time': datetime.now().strftime('%Y-%m-%dT%H:%M:%S%z'),
+            'end_time': datetime.now(timezone.utc).isoformat(),
             'no_attributes': True
         }
         ).json()
@@ -189,7 +198,7 @@ def update_device_active(conn):
     # build time buckets
     dt = last_time + bucket_width
     buckets = []
-    while dt < datetime.now().astimezone(tz):
+    while dt < datetime.now(timezone.utc):
         buckets.append({
             'end_time': dt,
             'pixel_screen_on': 0,
@@ -197,6 +206,9 @@ def update_device_active(conn):
             'fireplace_tv_on': 0,
             })
         dt += bucket_width
+    if len(buckets) < 2:
+        cursor.close()
+        return
 
     # run through entity metrics
     for metric in metric_data:
@@ -218,7 +230,7 @@ def update_device_active(conn):
             
             # get this item's data
             current_state = metric_data[metric]['value_map'][row['state']]
-            current_timestamp = parser.isoparse(row['last_changed']).astimezone(tz)
+            current_timestamp = datetime.fromisoformat(row['last_changed'])
             for i, bucket in enumerate(buckets):
                 if current_timestamp <= bucket['end_time']:
                     current_bucket_index = i
@@ -265,10 +277,52 @@ def update_device_active(conn):
     print('Inserting', len(data_submit), 'rows...')
     for row in data_submit:
         cursor.execute('INSERT INTO device_active (timestamp, pixel_screen_on, office_door_open, fireplace_tv_on) VALUES (%s, %s, %s, %s)',
-            (row['end_time'], row['pixel_screen_on'], row['office_door_open'], row['fireplace_tv_on'])
+            (row['end_time'].timestamp(), row['pixel_screen_on'], row['office_door_open'], row['fireplace_tv_on'])
             )
     conn.commit()
     cursor.close()
+    return
+
+def update_heart_rate(conn):
+    print('Updating table: heart_rate')
+
+    # configuration options
+    detail_level = '1min'
+    
+    # get last entry timestamp
+    cursor = conn.cursor()
+    cursor.execute('SELECT timestamp FROM heart_rate ORDER BY timestamp DESC LIMIT 1')
+    result = cursor.fetchone()
+    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
+
+    # get list of dates to download
+    # can only download granular stats in increments of 24h or less
+    query_date = last_time
+    query_dates = [query_date.date().isoformat()]
+    while query_date.date().isoformat() != datetime.now(timezone.utc).date().isoformat():
+        query_date += timedelta(days=1)
+        query_dates.append(query_date.date().isoformat())
+    
+    # get data from api
+    data_submit = []
+    for query_date in query_dates:
+        query_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/'+query_date+'/1d/'+detail_level+'.json'
+        query_response = get_data_fitbit(query_url)
+        for row in query_response['activities-heart-intraday']['dataset']:
+            data_submit.append({
+                'timestamp': datetime.fromisoformat(query_date+'T'+row['time']+'Z'),
+                'heart_rate_bpm': row['value'],
+            })
+    
+    # push data to database
+    print('Inserting', len(data_submit), 'rows...')
+    for row in data_submit:
+        cursor.execute('INSERT INTO heart_rate (timestamp, heart_rate_bpm) VALUES (%s, %s)',
+            (row['timestamp'].timestamp(), row['heart_rate_bpm'])
+            )
+    conn.commit()
+    cursor.close()
+    return
 
 def main():
     # connect to database
@@ -284,10 +338,12 @@ def main():
     update_activity(conn)
     update_location(conn)
     update_device_active(conn)
+    update_heart_rate(conn)
 
     # close the connection
     conn.close()
     print('All tables updated. Sleeping...')
+    return
 
 if __name__ == '__main__':
     print('App started.')
