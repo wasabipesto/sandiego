@@ -16,7 +16,7 @@ def update_activity(conn):
 
     # get last row in table
     cursor = conn.cursor()
-    cursor.execute('SELECT time, android_detected_activity FROM activity ORDER BY time DESC LIMIT 1')
+    cursor.execute('SELECT timestamp, android_detected_activity FROM activity ORDER BY timestamp DESC LIMIT 1')
     result = cursor.fetchone()
     last_time = result[0]
     last_state = result[1]
@@ -47,7 +47,7 @@ def update_activity(conn):
     # push data to database
     print('Inserting', len(data_submit), 'rows...')
     for row in data_submit:
-        cursor.execute('INSERT INTO activity (time, android_detected_activity) VALUES (%s, %s)',
+        cursor.execute('INSERT INTO activity (timestamp, android_detected_activity) VALUES (%s, %s)',
             (row['time'], row['state'])
             )
     conn.commit()
@@ -58,7 +58,7 @@ def update_location(conn):
 
     # get last row in table
     cursor = conn.cursor()
-    cursor.execute('SELECT time, hass_detected_zone FROM location ORDER BY time DESC LIMIT 1')
+    cursor.execute('SELECT timestamp, hass_detected_zone FROM location ORDER BY timestamp DESC LIMIT 1')
     result = cursor.fetchone()
     last_time = result[0]
     last_state = result[1]
@@ -88,7 +88,7 @@ def update_location(conn):
     # push data to database
     print('Inserting', len(data_submit), 'rows...')
     for row in data_submit:
-        cursor.execute('INSERT INTO location (time, hass_detected_zone) VALUES (%s, %s)',
+        cursor.execute('INSERT INTO location (timestamp, hass_detected_zone) VALUES (%s, %s)',
             (row['time'], row['state'])
             )
     conn.commit()
@@ -98,7 +98,7 @@ def update_device_active(conn):
     print('Updating table: device_active')
 
     # configuration options
-    bucket_width = timedelta(minutes=60)
+    bucket_width = timedelta(minutes=5)
     metric_data = {
         'pixel_screen_on': {
             'hass_entity_id': 'binary_sensor.justin_pixel5_device_locked',
@@ -129,7 +129,7 @@ def update_device_active(conn):
 
     # get last row in table
     cursor = conn.cursor()
-    cursor.execute('SELECT time FROM device_active ORDER BY time DESC LIMIT 1')
+    cursor.execute('SELECT timestamp FROM device_active ORDER BY timestamp DESC LIMIT 1')
     result = cursor.fetchone()
     last_time = result[0]
 
@@ -229,7 +229,7 @@ def update_device_active(conn):
     # push data to database
     print('Inserting', len(data_submit), 'rows...')
     for row in data_submit:
-        cursor.execute('INSERT INTO device_active (time, pixel_screen_on, office_door_open, fireplace_tv_on) VALUES (%s, %s, %s, %s)',
+        cursor.execute('INSERT INTO device_active (timestamp, pixel_screen_on, office_door_open, fireplace_tv_on) VALUES (%s, %s, %s, %s)',
             (row['end_time'], row['pixel_screen_on'], row['office_door_open'], row['fireplace_tv_on'])
             )
     conn.commit()
@@ -258,4 +258,4 @@ if __name__ == '__main__':
     print('App started.')
     while True:
         main()
-        time.sleep(3600)
+        time.sleep(3660)

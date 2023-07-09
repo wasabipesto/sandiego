@@ -1,3 +1,5 @@
 .env
 .gitsecret/keys/random_seed
 *.ipynb
+schema
+secrets
