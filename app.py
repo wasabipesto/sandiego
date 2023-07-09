@@ -309,8 +309,24 @@ def update_heart_rate(conn):
         query_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/'+query_date+'/1d/'+detail_level+'.json'
         query_response = get_data_fitbit(query_url)
         for row in query_response['activities-heart-intraday']['dataset']:
+            # get timestamps
+            if len(data_submit):
+                prev_time = row_time
+            else:
+                prev_time = last_time
+            row_time = datetime.fromisoformat(query_date+'T'+row['time']+'Z')
+            # check for overlaps and gaps
+            if row_time < last_time:
+                continue
+            if row_time > prev_time + timedelta(minutes=1):
+                minutes_missing = int((row_time - last_time).total_seconds() / 60)
+                for i in range(1, minutes_missing-1):
+                    data_submit.append({
+                        'timestamp': last_time+timedelta(minutes=i),
+                        'heart_rate_bpm': None,
+                    })
             data_submit.append({
-                'timestamp': datetime.fromisoformat(query_date+'T'+row['time']+'Z'),
+                'timestamp': row_time,
                 'heart_rate_bpm': row['value'],
             })
     
