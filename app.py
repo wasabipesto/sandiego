@@ -20,7 +20,7 @@ def get_data_fitbit(url):
         )
     
     if response.status_code == 429:
-        raise Exception('Fitbit API rate-limited.')
+        raise Exception('Fitbit API rate-limited.', response.headers)
 
     if response.status_code == 401:
         # request new key
@@ -340,6 +340,63 @@ def update_heart_rate(conn):
     cursor.close()
     return
 
+def update_steps(conn):
+    print('Updating table: steps')
+
+    # configuration options
+    detail_level = '1min'
+    
+    # get last entry timestamp
+    cursor = conn.cursor()
+    cursor.execute('SELECT timestamp FROM steps ORDER BY timestamp DESC LIMIT 1')
+    result = cursor.fetchone()
+    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
+
+    # get list of dates to download
+    # can only download granular stats in increments of 24h or less
+    query_date = last_time
+    query_dates = [query_date.date().isoformat()]
+    while query_date.date().isoformat() != datetime.now(timezone.utc).date().isoformat():
+        query_date += timedelta(days=1)
+        query_dates.append(query_date.date().isoformat())
+    
+    # get data from api
+    data_submit = []
+    for query_date in query_dates:
+        query_url = 'https://api.fitbit.com/1/user/-/activities/steps/date/'+query_date+'/1d/'+detail_level+'.json'
+        query_response = get_data_fitbit(query_url)
+        for row in query_response['activities-steps-intraday']['dataset']:
+            # get timestamps
+            if len(data_submit):
+                prev_time = row_time
+            else:
+                prev_time = last_time
+            row_time = datetime.fromisoformat(query_date+'T'+row['time']+'Z')
+            # check for overlaps and gaps
+            if row_time < last_time:
+                continue
+            if row_time > prev_time + timedelta(minutes=1):
+                minutes_missing = int((row_time - last_time).total_seconds() / 60)
+                for i in range(1, minutes_missing-1):
+                    data_submit.append({
+                        'timestamp': last_time+timedelta(minutes=i),
+                        'steps_count': None,
+                    })
+            data_submit.append({
+                'timestamp': row_time,
+                'steps_count': row['value'],
+            })
+    
+    # push data to database
+    print('Inserting', len(data_submit), 'rows...')
+    for row in data_submit:
+        cursor.execute('INSERT INTO steps (timestamp, steps_count) VALUES (%s, %s)',
+            (row['timestamp'].timestamp(), row['steps_count'])
+            )
+    conn.commit()
+    cursor.close()
+    return
+
 def main():
     # connect to database
     conn = psycopg2.connect(
@@ -355,6 +412,7 @@ def main():
     update_location(conn)
     update_device_active(conn)
     update_heart_rate(conn)
+    update_steps(conn)
 
     # close the connection
     conn.close()
