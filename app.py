@@ -79,6 +79,14 @@ def get_last_metric(conn, table, metric):
     cursor.close()
     return result[0]
 
+def get_all_metric(conn, table, metric):
+    cursor = conn.cursor()
+    cursor.execute(f'SELECT {column} FROM {table}')
+    result = cursor.fetchall()
+    cursor.close()
+    return [row[0] for row in result]
+
+
 def dates_to_query(query_date):
     query_dates = [query_date.date().isoformat()]
     while query_date.date().isoformat() != datetime.now(timezone.utc).date().isoformat():
@@ -112,19 +120,16 @@ def update_activity(conn):
     response = get_data_hass(last_time, sensors)
     
     # collate data to submit
-    data_prep = [
-        {
-            'time': datetime.fromisoformat(row['last_changed']), 
-            'android_detected_activity': row['state']
-        } 
-            for row in response[0] 
-            if row['state'] in acceptable_states
-        ]
-    data_submit = [{'android_detected_activity':last_state}]
-    for row in data_prep:
-        if row['android_detected_activity'] != data_submit[-1]['android_detected_activity']:
-            data_submit.append(row)
-    data_submit.pop(0)
+    data_submit = []
+    for row in response[0]:
+        if row['state'] in acceptable_states:
+            current_state = row['state']
+            if current_state != last_state:
+                data_submit.append({
+                    'timestamp': datetime.fromisoformat(row['last_changed']).timestamp(),
+                    'android_detected_activity': current_state,
+                })
+                last_state = current_state
     
     # push data to database
     insert_data(conn, table_name, data_submit)
@@ -362,6 +367,41 @@ def update_steps(conn):
     insert_data(conn, table_name, data_submit)
     return
 
+def update_sleep(conn):
+    # configuration options
+    table_name = 'sleep'
+    
+    # get last entry timestamp
+    last_time = get_last_timestamp(conn, table_name)
+    sleep_ids = get_all_metric(conn, table_name, 'fitbit_log_id')
+    if datetime.now(timezone.utc) <= last_time + timedelta(hours=24):
+        print('Skipping', table_name, 'based on cooldown.')
+    else:
+        print('Updating table:', table_name)
+    
+    # get data from api
+    data_submit = []
+    for query_date in dates_to_query(last_time):
+        query_response = get_data_fitbit('https://api.fitbit.com/1.2/user/-/sleep/date/'+query_date+'.json')
+        for row in query_response['sleep']:
+            if row['logId'] not in sleep_ids:
+                data_submit.append({
+                    'timestamp': datetime.fromisoformat(row['endTime']+'Z').timestamp(),
+                    'sleep_hours_inbed': row['timeInBed']/60,
+                    'sleep_hours_asleep': row['minutesAsleep']/60,
+                    'sleep_hours_deep': row['levels']['summary']['deep']['minutes']/60,
+                    'sleep_hours_light': row['levels']['summary']['light']['minutes']/60,
+                    'sleep_hours_rem': row['levels']['summary']['rem']['minutes']/60,
+                    'sleep_hours_wake': row['levels']['summary']['wake']['minutes']/60,
+                    'sleep_time_start': datetime.fromisoformat(row['startTime']+'Z'),
+                    'sleep_time_end': datetime.fromisoformat(row['endTime']+'Z'),
+                    'fitbit_log_id': row['logId'],
+                })
+    
+    # push data to database
+    insert_data(conn, table_name, data_submit)
+    return
+
 
 def main():
     # connect to database
@@ -379,6 +419,7 @@ def main():
     update_device_active(conn)
     update_heart_rate(conn)
     update_steps(conn)
+    update_sleep(conn)
 
     # close the connection
     conn.close()
