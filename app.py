@@ -5,7 +5,23 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg2
 import requests
+from psycopg2.extensions import AsIs
 
+def get_data_hass(start_time, sensors):
+    sensors_string = ','.join([s for s in sensors])
+    response = requests.get(
+        os.environ.get('HASS_URL')+'/api/history/period/'+start_time.isoformat(),
+        headers={
+            'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
+            'content-type': 'application/json',
+            },
+        params={
+            'filter_entity_id': sensors_string,
+            'end_time': datetime.now(timezone.utc).isoformat(),
+            'no_attributes': True
+            }
+        )
+    return response.json()
 
 def get_data_fitbit(url):
     # load secrets file
@@ -49,100 +65,106 @@ def get_data_fitbit(url):
             )
     return response.json()
 
+def get_last_timestamp(conn, table):
+    cursor = conn.cursor()
+    cursor.execute(f'SELECT timestamp FROM {table} ORDER BY timestamp DESC LIMIT 1')
+    result = cursor.fetchone()
+    cursor.close()
+    return datetime.fromtimestamp(result[0], tz=timezone.utc)
+
+def get_last_metric(conn, table, metric):
+    cursor = conn.cursor()
+    cursor.execute(f'SELECT {metric} FROM {table} ORDER BY timestamp DESC LIMIT 1')
+    result = cursor.fetchone()
+    cursor.close()
+    return result[0]
+
+def dates_to_query(query_date):
+    query_dates = [query_date.date().isoformat()]
+    while query_date.date().isoformat() != datetime.now(timezone.utc).date().isoformat():
+        query_date += timedelta(days=1)
+        query_dates.append(query_date.date().isoformat())
+    return query_dates
+
+def insert_data(conn, table, data):
+    print('Inserting', len(data), 'rows...')
+    cursor = conn.cursor()
+    insert_statement = f'INSERT INTO {table} (%s) VALUES %s'
+    for row in data:
+        cursor.execute(insert_statement, (AsIs(','.join(row.keys())), tuple(row.values())))
+    conn.commit()
+    cursor.close()
+    return
+
 def update_activity(conn):
-    print('Updating table: activity')
+    # configuration options
+    table_name = 'personal_activity'
+    sensors = ['sensor.justin_pixel5_detected_activity']
+    acceptable_states = ['still', 'walking', 'running', 'in_vehicle']
 
     # get last row in table
     cursor = conn.cursor()
-    cursor.execute('SELECT timestamp, android_detected_activity FROM personal_activity ORDER BY timestamp DESC LIMIT 1')
-    result = cursor.fetchone()
-    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
-    last_state = result[1]
+    last_time = get_last_timestamp(conn, table_name)
+    last_state = get_last_metric(conn, table_name, 'android_detected_activity')
+    print('Updating table:', table_name)
 
     # get data from api
-    response = requests.get(
-        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.isoformat(),
-        headers={
-            'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
-            'content-type': 'application/json',
-        },
-        params={
-            'filter_entity_id': 'sensor.justin_pixel5_detected_activity',
-            'end_time': datetime.now(timezone.utc).isoformat(),
-            'no_attributes': True
-        }
-        ).json()
+    response = get_data_hass(last_time, sensors)
     
     # collate data to submit
-    acceptable_states = ['still', 'walking', 'running', 'in_vehicle']
-    data_prep = [{'time': datetime.fromisoformat(row['last_changed']), 'state': row['state']} for row in response[0] if row['state'] in acceptable_states]
-    data_submit = [{'state':last_state}]
+    data_prep = [
+        {
+            'time': datetime.fromisoformat(row['last_changed']), 
+            'android_detected_activity': row['state']
+        } 
+            for row in response[0] 
+            if row['state'] in acceptable_states
+        ]
+    data_submit = [{'android_detected_activity':last_state}]
     for row in data_prep:
-        if row['state'] != data_submit[-1]['state']:
+        if row['android_detected_activity'] != data_submit[-1]['android_detected_activity']:
             data_submit.append(row)
     data_submit.pop(0)
-
-    if len(data_submit) == 0:
-        cursor.close()
-        return
     
     # push data to database
-    print('Inserting', len(data_submit), 'rows...')
-    for row in data_submit:
-        cursor.execute('INSERT INTO personal_activity (timestamp, android_detected_activity) VALUES (%s, %s)',
-            (row['time'].timestamp(), row['state'])
-            )
-    conn.commit()
-    cursor.close()
+    insert_data(conn, table_name, data_submit)
     return
 
 def update_location(conn):
-    print('Updating table: location')
+    # configuration options
+    table_name = 'location'
+    sensors = ['person.justin']
 
     # get last row in table
-    cursor = conn.cursor()
-    cursor.execute('SELECT timestamp, hass_detected_zone FROM location ORDER BY timestamp DESC LIMIT 1')
-    result = cursor.fetchone()
-    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
-    last_state = result[1]
+    last_time = get_last_timestamp(conn, 'location')
+    last_state = get_last_metric(conn, table_name, 'hass_detected_zone')
+    print('Updating table:', table_name)
 
     # get data from api
-    response = requests.get(
-        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.isoformat(),
-        headers={
-            'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
-            'content-type': 'application/json',
-        },
-        params={
-            'filter_entity_id': 'person.justin',
-            'end_time': datetime.now(timezone.utc).isoformat(),
-            'no_attributes': True
-        }
-        ).json()
+    response = get_data_hass(last_time, sensors)
     
     # collate data to submit
-    data_prep = [{'time': datetime.fromisoformat(row['last_changed']), 'state': row['state']} for row in response[0]]
-    data_submit = [{'state':last_state}]
+    data_prep = [
+        {
+            'timestamp': datetime.fromisoformat(row['last_changed']).timestamp(), 
+            'hass_detected_zone': row['state'],
+        }
+            for row in response[0]
+        ]
+    data_submit = [{'hass_detected_zone':last_state}]
     for row in data_prep:
-        if row['state'] != data_submit[-1]['state']:
+        if row['hass_detected_zone'] != data_submit[-1]['hass_detected_zone']:
             data_submit.append(row)
     data_submit.pop(0)
     
     # push data to database
-    print('Inserting', len(data_submit), 'rows...')
-    for row in data_submit:
-        cursor.execute('INSERT INTO location (timestamp, hass_detected_zone) VALUES (%s, %s)',
-            (row['time'].timestamp(), row['state'])
-            )
-    conn.commit()
-    cursor.close()
+    insert_data(conn, table_name, data_submit)
     return
 
 def update_device_active(conn):
-    print('Updating table: device_active')
-
     # configuration options
-    bucket_width = timedelta(minutes=5)
+    table_name = 'device_active'
+    bucket_width = 300 # seconds
     metric_data = {
         'pixel_screen_on': {
             'hass_entity_id': 'binary_sensor.justin_pixel5_device_locked',
@@ -172,42 +194,26 @@ def update_device_active(conn):
     }
 
     # get last row in table
-    cursor = conn.cursor()
-    cursor.execute('SELECT timestamp FROM device_active ORDER BY timestamp DESC LIMIT 1')
-    result = cursor.fetchone()
-    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
+    last_time = get_last_timestamp(conn, table_name)
+    print('Updating table:', table_name)
 
     # get data from api
-    response = requests.get(
-        os.environ.get('HASS_URL')+'/api/history/period/'+last_time.isoformat(),
-        headers={
-            'authorization': 'Bearer '+os.environ.get('HASS_API_KEY'),
-            'content-type': 'application/json',
-        },
-        params={
-            'filter_entity_id': 
-                'binary_sensor.justin_pixel5_device_locked,'+
-                'binary_sensor.office_door,'+
-                'media_player.fireplace_tv',
-            'end_time': datetime.now(timezone.utc).isoformat(),
-            'no_attributes': True
-        }
-        ).json()
+    response = get_data_hass(last_time, [metric['hass_entity_id'] for metric in metric_data.values()])
     response_list = [item for sublist in response for item in sublist]
 
     # build time buckets
-    dt = last_time + bucket_width
-    buckets = []
-    while dt < datetime.now(timezone.utc):
-        buckets.append({
-            'end_time': dt,
+    dt = last_time.timestamp() + bucket_width
+    data_submit = []
+    while dt < datetime.now(timezone.utc).timestamp():
+        data_submit.append({
+            'timestamp': dt,
             'pixel_screen_on': 0,
             'office_door_open': 0,
             'fireplace_tv_on': 0,
             })
         dt += bucket_width
-    if len(buckets) < 2:
-        cursor.close()
+    if len(data_submit) < 2:
+        print('Skipping', table_name, 'due to no new data.')
         return
 
     # run through entity metrics
@@ -218,7 +224,7 @@ def update_device_active(conn):
             if metric_items.index(row) == 0:
                 # first item in dataset, use initial values
                 previous_state = 1 - metric_data[metric]['value_map'][row['state']]
-                previous_timestamp = last_time
+                previous_timestamp = last_time.timestamp()
                 previous_bucket_index = 0
                 previous_time_until_bucket_end = bucket_width
             else:
@@ -230,14 +236,14 @@ def update_device_active(conn):
             
             # get this item's data
             current_state = metric_data[metric]['value_map'][row['state']]
-            current_timestamp = datetime.fromisoformat(row['last_changed'])
-            for i, bucket in enumerate(buckets):
-                if current_timestamp <= bucket['end_time']:
+            current_timestamp = datetime.fromisoformat(row['last_changed']).timestamp()
+            for i, bucket in enumerate(data_submit):
+                if current_timestamp <= bucket['timestamp']:
                     current_bucket_index = i
                     break
             
             # get bucket data
-            current_bucket_end = buckets[current_bucket_index]['end_time']
+            current_bucket_end = data_submit[current_bucket_index]['timestamp']
             current_bucket_start = current_bucket_end - bucket_width
 
             # get differentials
@@ -250,62 +256,44 @@ def update_device_active(conn):
                 # this item is in the same bucket as the previous one
                 # add active duration to current bucket
                 #print(metric, 'bucket', current_bucket_index, 'intra +', time_since_last_item * previous_state / bucket_width)
-                buckets[current_bucket_index][metric] += time_since_last_item * previous_state / bucket_width
+                data_submit[current_bucket_index][metric] += time_since_last_item * previous_state / bucket_width
             else:
                 # this is the first item in the current bucket
                 # add active duration to fill the last incomplete bucket
                 #print(metric, 'bucket', previous_bucket_index, 'end   +', previous_time_until_bucket_end * previous_state / bucket_width)
-                buckets[previous_bucket_index][metric] += previous_time_until_bucket_end * previous_state / bucket_width
+                data_submit[previous_bucket_index][metric] += previous_time_until_bucket_end * previous_state / bucket_width
                 # fill all buckets inbetween, if any
                 for i in range(previous_bucket_index+1,current_bucket_index):
                     #print(metric, 'bucket', i, 'fill  +', previous_state)
-                    buckets[i][metric] += previous_state
+                    data_submit[i][metric] += previous_state
                 # add active duration to current bucket
                 #print(metric, 'bucket', current_bucket_index, 'first +', time_since_bucket_start * previous_state / bucket_width)
-                buckets[current_bucket_index][metric] += time_since_bucket_start * previous_state / bucket_width
+                data_submit[current_bucket_index][metric] += time_since_bucket_start * previous_state / bucket_width
             
         # finish the last incomplete bucket
         #print(metric, 'bucket', current_bucket_index, 'end   +', time_until_bucket_end * current_state / bucket_width)
-        buckets[current_bucket_index][metric] += time_until_bucket_end * current_state / bucket_width
+        data_submit[current_bucket_index][metric] += time_until_bucket_end * current_state / bucket_width
         # fill any remaining buckets
-        for i in range(current_bucket_index+1,len(buckets)):
+        for i in range(current_bucket_index+1,len(data_submit)):
             #print(metric, 'bucket', i, 'fill  +', current_state)
-            buckets[i][metric] += current_state
-    data_submit = buckets
+            data_submit[i][metric] += current_state
     
     # push data to database
-    print('Inserting', len(data_submit), 'rows...')
-    for row in data_submit:
-        cursor.execute('INSERT INTO device_active (timestamp, pixel_screen_on, office_door_open, fireplace_tv_on) VALUES (%s, %s, %s, %s)',
-            (row['end_time'].timestamp(), row['pixel_screen_on'], row['office_door_open'], row['fireplace_tv_on'])
-            )
-    conn.commit()
-    cursor.close()
+    insert_data(conn, table_name, data_submit)
     return
 
 def update_heart_rate(conn):
-    print('Updating table: heart_rate')
-
     # configuration options
+    table_name = 'heart_rate'
     detail_level = '1min'
     
     # get last entry timestamp
-    cursor = conn.cursor()
-    cursor.execute('SELECT timestamp FROM heart_rate ORDER BY timestamp DESC LIMIT 1')
-    result = cursor.fetchone()
-    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
-
-    # get list of dates to download
-    # can only download granular stats in increments of 24h or less
-    query_date = last_time
-    query_dates = [query_date.date().isoformat()]
-    while query_date.date().isoformat() != datetime.now(timezone.utc).date().isoformat():
-        query_date += timedelta(days=1)
-        query_dates.append(query_date.date().isoformat())
+    last_time = get_last_timestamp(conn, table_name)
+    print('Updating table:', table_name)
     
     # get data from api
     data_submit = []
-    for query_date in query_dates:
+    for query_date in dates_to_query(last_time):
         query_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/'+query_date+'/1d/'+detail_level+'.json'
         query_response = get_data_fitbit(query_url)
         for row in query_response['activities-heart-intraday']['dataset']:
@@ -326,43 +314,26 @@ def update_heart_rate(conn):
                         'heart_rate_bpm': None,
                     })
             data_submit.append({
-                'timestamp': row_time,
+                'timestamp': row_time.timestamp(),
                 'heart_rate_bpm': row['value'],
             })
     
     # push data to database
-    print('Inserting', len(data_submit), 'rows...')
-    for row in data_submit:
-        cursor.execute('INSERT INTO heart_rate (timestamp, heart_rate_bpm) VALUES (%s, %s)',
-            (row['timestamp'].timestamp(), row['heart_rate_bpm'])
-            )
-    conn.commit()
-    cursor.close()
+    insert_data(conn, table_name, data_submit)
     return
 
 def update_steps(conn):
-    print('Updating table: steps')
-
     # configuration options
+    table_name = 'steps'
     detail_level = '1min'
     
     # get last entry timestamp
-    cursor = conn.cursor()
-    cursor.execute('SELECT timestamp FROM steps ORDER BY timestamp DESC LIMIT 1')
-    result = cursor.fetchone()
-    last_time = datetime.fromtimestamp(result[0], tz=timezone.utc)
-
-    # get list of dates to download
-    # can only download granular stats in increments of 24h or less
-    query_date = last_time
-    query_dates = [query_date.date().isoformat()]
-    while query_date.date().isoformat() != datetime.now(timezone.utc).date().isoformat():
-        query_date += timedelta(days=1)
-        query_dates.append(query_date.date().isoformat())
+    last_time = get_last_timestamp(conn, table_name)
+    print('Updating table:', table_name)
     
     # get data from api
     data_submit = []
-    for query_date in query_dates:
+    for query_date in dates_to_query(last_time):
         query_url = 'https://api.fitbit.com/1/user/-/activities/steps/date/'+query_date+'/1d/'+detail_level+'.json'
         query_response = get_data_fitbit(query_url)
         for row in query_response['activities-steps-intraday']['dataset']:
@@ -383,19 +354,14 @@ def update_steps(conn):
                         'steps_count': None,
                     })
             data_submit.append({
-                'timestamp': row_time,
+                'timestamp': row_time.timestamp(),
                 'steps_count': row['value'],
             })
     
     # push data to database
-    print('Inserting', len(data_submit), 'rows...')
-    for row in data_submit:
-        cursor.execute('INSERT INTO steps (timestamp, steps_count) VALUES (%s, %s)',
-            (row['timestamp'].timestamp(), row['steps_count'])
-            )
-    conn.commit()
-    cursor.close()
+    insert_data(conn, table_name, data_submit)
     return
+
 
 def main():
     # connect to database
