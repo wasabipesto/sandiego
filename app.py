@@ -81,7 +81,7 @@ def get_last_metric(conn, table, metric):
 
 def get_all_metric(conn, table, metric):
     cursor = conn.cursor()
-    cursor.execute(f'SELECT {column} FROM {table}')
+    cursor.execute(f'SELECT {metric} FROM {table} ORDER BY timestamp DESC')
     result = cursor.fetchall()
     cursor.close()
     return [row[0] for row in result]
@@ -315,7 +315,7 @@ def update_heart_rate(conn):
                 minutes_missing = int((row_time - last_time).total_seconds() / 60)
                 for i in range(1, minutes_missing-1):
                     data_submit.append({
-                        'timestamp': last_time+timedelta(minutes=i),
+                        'timestamp': (last_time+timedelta(minutes=i)).timestamp(),
                         'heart_rate_bpm': None,
                     })
             data_submit.append({
@@ -339,8 +339,7 @@ def update_steps(conn):
     # get data from api
     data_submit = []
     for query_date in dates_to_query(last_time):
-        query_url = 'https://api.fitbit.com/1/user/-/activities/steps/date/'+query_date+'/1d/'+detail_level+'.json'
-        query_response = get_data_fitbit(query_url)
+        query_response = get_data_fitbit('https://api.fitbit.com/1/user/-/activities/steps/date/'+query_date+'/1d/'+detail_level+'.json')
         for row in query_response['activities-steps-intraday']['dataset']:
             # get timestamps
             if len(data_submit):
@@ -349,7 +348,7 @@ def update_steps(conn):
                 prev_time = last_time
             row_time = datetime.fromisoformat(query_date+'T'+row['time']+'Z')
             # check for overlaps and gaps
-            if row_time < last_time:
+            if row_time < last_time or row_time > datetime.now(timezone.utc):
                 continue
             if row_time > prev_time + timedelta(minutes=1):
                 minutes_missing = int((row_time - last_time).total_seconds() / 60)
@@ -374,8 +373,9 @@ def update_sleep(conn):
     # get last entry timestamp
     last_time = get_last_timestamp(conn, table_name)
     sleep_ids = get_all_metric(conn, table_name, 'fitbit_log_id')
-    if datetime.now(timezone.utc) <= last_time + timedelta(hours=24):
+    if datetime.now(timezone.utc) <= last_time + timedelta(hours=30):
         print('Skipping', table_name, 'based on cooldown.')
+        return
     else:
         print('Updating table:', table_name)
     
