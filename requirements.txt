@@ -1,2 +1,4 @@
+numpy
 psycopg2-binary
 requests
+pyyaml

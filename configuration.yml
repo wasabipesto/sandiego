@@ -1,0 +1,205 @@
+tables:
+    daily_summary:
+        duration_minutes: 1440
+    intraday_15m:
+        duration_minutes: 15
+    intraday_1m:
+        duration_minutes: 1
+
+metrics:
+    sleep_hours_inbed:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: hours_inbed
+    sleep_hours_asleep:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: hours_asleep
+    sleep_hours_deep:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: hours_deep
+    sleep_hours_light:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: hours_light
+    sleep_hours_rem:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: hours_rem
+    sleep_hours_wake:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: hours_wake
+    sleep_time_start:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: time_start
+    sleep_time_end:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: sleep
+        aggregate: fitbit_sleep
+        fitbit_sleep_item: time_end
+
+    steps_count_sum:
+        tables:
+            - daily_summary
+            - intraday_15m
+            - intraday_1m
+        source: fitbit
+        fitbit_type: steps
+        aggregate: fitbit_steps_sum
+
+    heart_rate_mean:
+        tables:
+            - daily_summary
+            - intraday_15m
+            - intraday_1m
+        source: fitbit
+        fitbit_type: heart
+        aggregate: fitbit_heart_mean
+    heart_rate_pct_10:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: heart
+        aggregate: fitbit_heart_percentile
+        fitbit_heart_percentile: 10
+    heart_rate_pct_20:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: heart
+        aggregate: fitbit_heart_percentile
+        fitbit_heart_percentile: 20
+    heart_rate_pct_50:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: heart
+        aggregate: fitbit_heart_percentile
+        fitbit_heart_percentile: 50
+    heart_rate_pct_80:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: heart
+        aggregate: fitbit_heart_percentile
+        fitbit_heart_percentile: 80
+    heart_rate_pct_90:
+        tables:
+            - daily_summary
+        source: fitbit
+        fitbit_type: heart
+        aggregate: fitbit_heart_percentile
+        fitbit_heart_percentile: 90
+    # heart_rate_rmssd
+
+    zone_hours_home:
+        tables:
+            - daily_summary
+        source: hass
+        hass_metric_id: person.justin
+        aggregate: hass_state_to_hours
+        select_states: 
+            - home
+    zone_hours_work:
+        tables:
+            - daily_summary
+        source: hass
+        hass_metric_id: person.justin
+        aggregate: hass_state_to_hours
+        select_states: 
+            - Work
+    zone_select:
+        tables:
+            - intraday_15m
+        source: hass
+        hass_metric_id: person.justin
+        aggregate: hass_state_to_select
+    
+    activity_hours_still:
+        tables:
+            - daily_summary
+        source: hass
+        hass_metric_id: sensor.justin_pixel5_detected_activity
+        aggregate: hass_state_to_hours
+        select_states: 
+            - still
+    activity_hours_walking:
+        tables:
+            - daily_summary
+        source: hass
+        hass_metric_id: sensor.justin_pixel5_detected_activity
+        aggregate: hass_state_to_hours
+        select_states: 
+            - walking
+    activity_hours_running:
+        tables:
+            - daily_summary
+        source: hass
+        hass_metric_id: sensor.justin_pixel5_detected_activity
+        aggregate: hass_state_to_hours
+        select_states: 
+            - running
+    activity_hours_vehicle:
+        tables:
+            - daily_summary
+        source: hass
+        hass_metric_id: sensor.justin_pixel5_detected_activity
+        aggregate: hass_state_to_hours
+        select_states: 
+            - in_vehicle
+    activity_select:
+        tables:
+            - intraday_15m
+        source: hass
+        hass_metric_id: sensor.justin_pixel5_detected_activity
+        aggregate: hass_state_to_select
+        override: fitbit_is_asleep
+
+    device_hours_phone:
+        tables:
+            - daily_summary
+            - intraday_15m
+        source: hass
+        hass_metric_id: binary_sensor.justin_pixel5_device_locked
+        aggregate: hass_state_to_hours
+        select_states: 
+            - "off" # off = unlocked
+    # device_hours_desktop
+    device_hours_tv:
+        tables:
+            - daily_summary
+            - intraday_15m
+        source: hass
+        hass_metric_id: media_player.fireplace_tv
+        aggregate: hass_state_to_hours
+        select_states: 
+            - "on"
+            - paused
+            - playing
+

@@ -3,6 +3,7 @@ docker stop sandiego-fetch
 docker rm sandiego-fetch
 docker run -d \
     -v /opt/sandiego-fetch/secrets:/usr/src/secrets \
+    -v /opt/sandiego-fetch/configuration.yml:/usr/src/configuration.yml:ro \
     -u 1001 \
     --restart unless-stopped \
     --name sandiego-fetch \
