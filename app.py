@@ -54,11 +54,12 @@ def format_hass_timestamps(response):
 
 
 def get_data_hass(query_start, metric_data):
+    print("Downloading metrics from Home Assistant...")
     hass_metrics = list(
         {
             metric["hass_metric_id"]
             for metric in metric_data.values()
-            if metric["source"] == "hass"
+            if metric["provider"] == "homeassistant"
         }
     )
     data_homeassistant_raw = query_hass(query_start, hass_metrics)
@@ -129,35 +130,21 @@ def dates_to_query_fitbit(query_start, query_end):
     return query_dates
 
 
-def get_data_fitbit(query_start, query_end, metric_config):
-    fitbit_type_data = {
-        "sleep": {
-            "url_start": "https://api.fitbit.com/1.2/user/-/sleep/date/",
-            "url_end": ".json",
-        },
-        "steps": {
-            "url_start": "https://api.fitbit.com/1/user/-/activities/steps/date/",
-            "url_end": "/1d/1min.json",
-        },
-        "heart": {
-            "url_start": "https://api.fitbit.com/1/user/-/activities/heart/date/",
-            "url_end": "/1d/1min.json",
-        },
-        "hrv": {
-            "url_start": "https://api.fitbit.com/1/user/-/hrv/date/",
-            "url_end": "/all.json",
-        },
-    }
+def get_data_fitbit(query_start, query_end, url_schemas, metric_config):
     fitbit_types = list(
         {
             metric["fitbit_type"]
             for metric in metric_config.values()
-            if metric["source"] == "fitbit"
+            if metric["provider"] == "fitbit"
         }
     )
 
     query_dates = dates_to_query_fitbit(query_start, query_end)
-    print("Fitbit API calls:", len(fitbit_types) * len(query_dates))
+    print(
+        "Downloading metrics from Fitbit:",
+        len(fitbit_types) * len(query_dates),
+        "calls...",
+    )
     # print("Requesting metrics:", fitbit_types)
     # print("Requesting dates:", query_dates)
 
@@ -166,9 +153,9 @@ def get_data_fitbit(query_start, query_end, metric_config):
         data_fitbit[fitbit_type] = {}
         for query_date_str in query_dates:
             url = (
-                fitbit_type_data[fitbit_type]["url_start"]
+                url_schemas[fitbit_type]["url_start"]
                 + query_date_str
-                + fitbit_type_data[fitbit_type]["url_end"]
+                + url_schemas[fitbit_type]["url_end"]
             )
             response = query_fitbit(url)
             data_fitbit[fitbit_type].update({query_date_str: response})
@@ -234,20 +221,20 @@ def get_state_duration_hours(
     return duration_sum / 3600
 
 
-def get_fitbit_steps_sum(bucket_start, bucket_end, fitbit_response):
+def get_fitbit_steps_sum(bucket_start, bucket_end, data_fitbit):
     steps_list = []
-    for query_date in fitbit_response:
-        for row in fitbit_response[query_date]["activities-steps-intraday"]["dataset"]:
+    for query_date in data_fitbit:
+        for row in data_fitbit[query_date]["activities-steps-intraday"]["dataset"]:
             row_time = datetime.fromisoformat(query_date + "T" + row["time"] + "Z")
             if bucket_start < row_time <= bucket_end:
                 steps_list.append(row["value"])
     return sum(steps_list)
 
 
-def get_fitbit_heart_mean(bucket_start, bucket_end, fitbit_response):
+def get_fitbit_heart_mean(bucket_start, bucket_end, data_fitbit):
     hr_list = []
-    for query_date in fitbit_response:
-        for row in fitbit_response[query_date]["activities-heart-intraday"]["dataset"]:
+    for query_date in data_fitbit:
+        for row in data_fitbit[query_date]["activities-heart-intraday"]["dataset"]:
             row_time = datetime.fromisoformat(query_date + "T" + row["time"] + "Z")
             if bucket_start < row_time <= bucket_end:
                 hr_list.append(row["value"])
@@ -257,10 +244,10 @@ def get_fitbit_heart_mean(bucket_start, bucket_end, fitbit_response):
         return None
 
 
-def get_fitbit_heart_percentile(bucket_start, bucket_end, fitbit_response, percentile):
+def get_fitbit_heart_percentile(bucket_start, bucket_end, data_fitbit, percentile):
     hr_list = []
-    for query_date in fitbit_response:
-        for row in fitbit_response[query_date]["activities-heart-intraday"]["dataset"]:
+    for query_date in data_fitbit:
+        for row in data_fitbit[query_date]["activities-heart-intraday"]["dataset"]:
             row_time = datetime.fromisoformat(query_date + "T" + row["time"] + "Z")
             if bucket_start < row_time <= bucket_end:
                 hr_list.append(row["value"])
@@ -270,33 +257,32 @@ def get_fitbit_heart_percentile(bucket_start, bucket_end, fitbit_response, perce
         return None
 
 
-def get_fitbit_sleep(bucket_start, bucket_end, fitbit_response, fitbit_sleep_item):
-    for query_date in fitbit_response:
-        for row in fitbit_response[query_date]["sleep"]:
-            row_time = datetime.fromisoformat(row["endTime"] + "Z")
-            if bucket_start < row_time <= bucket_end:
-                if fitbit_sleep_item == "hours_inbed":
-                    return row["timeInBed"] / 60
-                elif fitbit_sleep_item == "hours_asleep":
-                    return row["minutesAsleep"] / 60
-                elif fitbit_sleep_item == "hours_deep":
-                    return row["levels"]["summary"]["deep"]["minutes"] / 60
-                elif fitbit_sleep_item == "hours_light":
-                    return row["levels"]["summary"]["light"]["minutes"] / 60
-                elif fitbit_sleep_item == "hours_rem":
-                    return row["levels"]["summary"]["rem"]["minutes"] / 60
-                elif fitbit_sleep_item == "hours_wake":
-                    return row["levels"]["summary"]["wake"]["minutes"] / 60
-                elif fitbit_sleep_item == "time_start":
-                    return datetime.fromisoformat(row["startTime"] + "Z")
-                elif fitbit_sleep_item == "time_end":
-                    return datetime.fromisoformat(row["endTime"] + "Z")
-                raise Exception("Sleep property not supported.")
-    print("Warning: No sleep entry found in range.")
+def get_fitbit_sleep(bucket_start, bucket_end, data_fitbit, fitbit_sleep_item):
+    for query_date, query_data in data_fitbit.items():
+        if query_date == bucket_start.date().isoformat():
+            sleep_item = query_data["sleep"][0]  # TODO: Get the longest sleep item
+            if fitbit_sleep_item == "hours_inbed":
+                return sleep_item["timeInBed"] / 60
+            elif fitbit_sleep_item == "hours_asleep":
+                return sleep_item["minutesAsleep"] / 60
+            elif fitbit_sleep_item == "hours_deep":
+                return sleep_item["levels"]["summary"]["deep"]["minutes"] / 60
+            elif fitbit_sleep_item == "hours_light":
+                return sleep_item["levels"]["summary"]["light"]["minutes"] / 60
+            elif fitbit_sleep_item == "hours_rem":
+                return sleep_item["levels"]["summary"]["rem"]["minutes"] / 60
+            elif fitbit_sleep_item == "hours_wake":
+                return sleep_item["levels"]["summary"]["wake"]["minutes"] / 60
+            elif fitbit_sleep_item == "time_start":
+                return datetime.fromisoformat(sleep_item["startTime"] + "Z")
+            elif fitbit_sleep_item == "time_end":
+                return datetime.fromisoformat(sleep_item["endTime"] + "Z")
+            raise Exception("Sleep property not supported.")
+    print("Warning: No sleep entry found for date", bucket_start.date().isoformat())
     return None
 
 
-def get_fitbit_isasleep(bucket_start, bucket_end, fitbit_response):
+def get_fitbit_isasleep(bucket_start, bucket_end, data_fitbit):
     return False  # TODO
 
 
@@ -361,6 +347,7 @@ def main():
 
     with open("configuration.yml", "r") as file:
         configuration_data = yaml.safe_load(file)
+    provider_config = configuration_data["providers"]
     table_config = configuration_data["tables"]
     metric_config = configuration_data["metrics"]
 
@@ -369,11 +356,16 @@ def main():
     query_end = datetime.now(timezone.utc)
     query_start = query_end - lookback_duration
 
-    print("Downloading metrics from Home Assistant...")
-    data_homeassistant = get_data_hass(query_start, metric_config)
+    if provider_config["homeassistant"]["enabled"]:
+        data_homeassistant = get_data_hass(query_start, metric_config)
 
-    print("Downloading metrics from Fitbit...")
-    data_fitbit = get_data_fitbit(query_start, query_end, metric_config)
+    if provider_config["fitbit"]["enabled"]:
+        data_fitbit = get_data_fitbit(
+            query_start,
+            query_end,
+            provider_config["fitbit"]["url_schemas"],
+            metric_config,
+        )
 
     for table_name in table_config:
         # insert new rows
@@ -390,6 +382,7 @@ def main():
             metric
             for metric in metric_config
             if table_name in metric_config[metric]["tables"]
+            and provider_config[metric_config[metric]["provider"]]["enabled"]
         ]
 
         # get current data
