@@ -1,10 +1,13 @@
 tables:
     daily_summary:
         duration_minutes: 1440
+        align_offset_minutes: 480
     intraday_15m:
         duration_minutes: 15
+        align_offset_minutes: 0
     intraday_1m:
         duration_minutes: 1
+        align_offset_minutes: 0
 
 metrics:
     sleep_hours_inbed:

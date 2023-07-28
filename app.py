@@ -20,10 +20,10 @@ def get_database_connection():
     )
 
 
-def query_hass(start_time, sensors):
+def query_hass(query_start, sensors):
     sensors_string = ",".join([s for s in sensors])
     response = requests.get(
-        os.environ.get("HASS_URL") + "/api/history/period/" + start_time.isoformat(),
+        os.environ.get("HASS_URL") + "/api/history/period/" + query_start.isoformat(),
         headers={
             "authorization": "Bearer " + os.environ.get("HASS_API_KEY"),
             "content-type": "application/json",
@@ -53,7 +53,7 @@ def format_hass_timestamps(response):
     return data_return
 
 
-def get_data_hass(start_time, metric_data):
+def get_data_hass(query_start, metric_data):
     hass_metrics = list(
         {
             metric["hass_metric_id"]
@@ -61,7 +61,7 @@ def get_data_hass(start_time, metric_data):
             if metric["source"] == "hass"
         }
     )
-    data_homeassistant_raw = query_hass(start_time, hass_metrics)
+    data_homeassistant_raw = query_hass(query_start, hass_metrics)
     data_homeassistant_formatted = format_hass_timestamps(data_homeassistant_raw)
     data_homeassistant = {
         metric: data_homeassistant_formatted[hass_metrics.index(metric)]
@@ -119,9 +119,9 @@ def query_fitbit(url):
     return response.json()
 
 
-def dates_to_query_fitbit(start_datetime):
-    query_date = start_datetime.date()
-    end_date = datetime.now(timezone.utc).date()
+def dates_to_query_fitbit(query_start, query_end):
+    query_date = query_start.date()
+    end_date = query_end.date()
     query_dates = []
     while query_date <= end_date:
         query_dates.append(query_date.isoformat())
@@ -129,7 +129,7 @@ def dates_to_query_fitbit(start_datetime):
     return query_dates
 
 
-def get_data_fitbit(start_time, metric_data):
+def get_data_fitbit(query_start, query_end, metric_config):
     fitbit_type_data = {
         "sleep": {
             "url_start": "https://api.fitbit.com/1.2/user/-/sleep/date/",
@@ -151,12 +151,12 @@ def get_data_fitbit(start_time, metric_data):
     fitbit_types = list(
         {
             metric["fitbit_type"]
-            for metric in metric_data.values()
+            for metric in metric_config.values()
             if metric["source"] == "fitbit"
         }
     )
 
-    query_dates = dates_to_query_fitbit(start_time)
+    query_dates = dates_to_query_fitbit(query_start, query_end)
     print("Fitbit API calls:", len(fitbit_types) * len(query_dates))
     # print("Requesting metrics:", fitbit_types)
     # print("Requesting dates:", query_dates)
@@ -173,39 +173,6 @@ def get_data_fitbit(start_time, metric_data):
             response = query_fitbit(url)
             data_fitbit[fitbit_type].update({query_date_str: response})
     return data_fitbit
-
-
-def get_last_updated(conn, tables):
-    cursor = conn.cursor()
-    times = []
-    for table in tables:
-        cursor.execute(f"SELECT end_time FROM {table} ORDER BY end_time DESC LIMIT 1")
-        result = cursor.fetchone()
-        times.append(result[0])
-    cursor.close()
-    return min(times).astimezone(timezone.utc)
-
-
-def get_last_row(conn, table):
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT * FROM {table} ORDER BY end_time DESC LIMIT 1")
-    result = cursor.fetchone()
-    cursor.close()
-    column_names = [desc[0] for desc in cursor.description]
-    row_dict = {column_names[i]: result[i] for i in range(len(column_names))}
-    return row_dict
-
-
-def get_buckets(bucket_time, bucket_width):
-    buckets = {}
-    bucket_time += bucket_width
-    while bucket_time <= datetime.now(timezone.utc):
-        buckets[bucket_time] = {
-            "start_time": bucket_time - bucket_width,
-            "end_time": bucket_time,
-        }
-        bucket_time += bucket_width
-    return buckets
 
 
 def state_data_to_bucket_durations(bucket_start, bucket_end, state_data, last_state):
@@ -333,101 +300,152 @@ def get_fitbit_isasleep(bucket_start, bucket_end, fitbit_response):
     return False  # TODO
 
 
-def insert_data(conn, table, data):
-    print("Inserting", len(data), "rows...")
-    cursor = conn.cursor()
-    insert_statement = f"INSERT INTO {table} (%s) VALUES %s"
-    for row in data:
-        cursor.execute(
-            insert_statement, (AsIs(",".join(row.keys())), tuple(row.values()))
+def get_buckets(query_start, query_end, bucket_width, align_offset):
+    buckets = []
+    bucket_time = (
+        query_start.replace(hour=0, minute=0, second=0, microsecond=0) + align_offset
+    )
+    while bucket_time < query_start:
+        bucket_time += bucket_width
+    bucket_time += bucket_width
+    while bucket_time <= query_end:
+        buckets.append(
+            {
+                "start_time": bucket_time - bucket_width,
+                "end_time": bucket_time,
+            }
         )
+        bucket_time += bucket_width
+    return buckets
+
+
+def insert_new_buckets(conn, table, data):
+    cursor = conn.cursor()
+    statement = f"INSERT INTO {table} (%s) VALUES %s ON CONFLICT DO NOTHING"
+    for row in data:
+        cursor.execute(statement, (AsIs(",".join(row.keys())), tuple(row.values())))
+    conn.commit()
+    cursor.close()
+    return
+
+
+def get_table_data(conn, table, query_start, query_end):
+    cursor = conn.cursor()
+    cursor.execute(
+        f"SELECT * FROM {table} WHERE start_time > %s AND end_time < %s ORDER BY end_time",
+        (query_start.isoformat(), query_end.isoformat()),
+    )
+    result = cursor.fetchall()
+    cursor.close()
+    column_names = [desc[0] for desc in cursor.description]
+    return [
+        {column_names[i]: row[i] for i in range(len(column_names))} for row in result
+    ]
+
+
+def update_data(conn, table, column, data):
+    print("Updating", len(data), "rows in", table, column)
+    cursor = conn.cursor()
+    statement = f"UPDATE {table} SET {column} = %s WHERE id = %s;"
+    for key, value in data.items():
+        cursor.execute(statement, (value, key))
     conn.commit()
     cursor.close()
     return
 
 
 def main():
-    print("Starting new run at", datetime.now(tz=timezone.utc).isoformat())
+    print("Starting new run at", datetime.now().isoformat())
 
     conn = get_database_connection()
 
     with open("configuration.yml", "r") as file:
         configuration_data = yaml.safe_load(file)
-    table_data = configuration_data["tables"]
-    metric_data = configuration_data["metrics"]
+    table_config = configuration_data["tables"]
+    metric_config = configuration_data["metrics"]
 
-    # get last updated time
-    last_updated = get_last_updated(conn, table_data.keys())
-    print("Last updated at", last_updated.isoformat())
+    lookback_minutes = int(os.environ.get("SANDIEGO_LOOKBACK_MINUTES"))
+    lookback_duration = timedelta(minutes=lookback_minutes)
+    query_end = datetime.now(timezone.utc)
+    query_start = query_end - lookback_duration
 
     print("Downloading metrics from Home Assistant...")
-    data_homeassistant = get_data_hass(last_updated, metric_data)
+    data_homeassistant = get_data_hass(query_start, metric_config)
 
     print("Downloading metrics from Fitbit...")
-    data_fitbit = get_data_fitbit(last_updated, metric_data)
+    data_fitbit = get_data_fitbit(query_start, query_end, metric_config)
 
-    for table_name in table_data:
-        print("Processing table", table_name, "...")
-        last_row = get_last_row(conn, table_name)
-        submit_data = get_buckets(
-            last_row["end_time"].astimezone(timezone.utc),
-            timedelta(minutes=table_data[table_name]["duration_minutes"]),
+    for table_name in table_config:
+        # insert new rows
+        new_buckets = get_buckets(
+            query_start,
+            query_end,
+            timedelta(minutes=table_config[table_name]["duration_minutes"]),
+            timedelta(minutes=table_config[table_name]["align_offset_minutes"]),
         )
-        for metric_name in metric_data:
-            metric_specs = metric_data[metric_name]
-            if table_name in metric_specs["tables"]:
-                print("Processing metric", metric_name, "...")
-                for end_time in submit_data:
-                    row = submit_data[end_time]
-                    # aggregate methods
-                    if metric_specs["aggregate"] == "fitbit_sleep":
-                        value = get_fitbit_sleep(
-                            row["start_time"],
-                            row["end_time"],
-                            data_fitbit[metric_specs["fitbit_type"]],
-                            metric_specs["fitbit_sleep_item"],
-                        )
-                    elif metric_specs["aggregate"] == "fitbit_steps_sum":
-                        value = get_fitbit_steps_sum(
-                            row["start_time"],
-                            row["end_time"],
-                            data_fitbit[metric_specs["fitbit_type"]],
-                        )
-                    elif metric_specs["aggregate"] == "fitbit_heart_mean":
-                        value = get_fitbit_heart_mean(
-                            row["start_time"],
-                            row["end_time"],
-                            data_fitbit[metric_specs["fitbit_type"]],
-                        )
-                    elif metric_specs["aggregate"] == "fitbit_heart_percentile":
-                        value = get_fitbit_heart_percentile(
-                            row["start_time"],
-                            row["end_time"],
-                            data_fitbit[metric_specs["fitbit_type"]],
-                            metric_specs["fitbit_heart_percentile"],
-                        )
-                    elif metric_specs["aggregate"] == "hass_state_to_select":
-                        value = get_predominant_state(
-                            row["start_time"],
-                            row["end_time"],
-                            data_homeassistant[metric_specs["hass_metric_id"]],
-                            last_row[metric_name],
-                        )
-                    elif metric_specs["aggregate"] == "hass_state_to_hours":
-                        value = get_state_duration_hours(
-                            row["start_time"],
-                            row["end_time"],
-                            data_homeassistant[metric_specs["hass_metric_id"]],
-                            last_row[metric_name],
-                            metric_specs["select_states"],
-                        )
-                    submit_data[end_time].update({metric_name: value})
-        insert_data(conn, table_name, submit_data.values())
+        insert_new_buckets(conn, table_name, new_buckets)
 
-    # close the connection
+        # get relevant metrics
+        table_metrics = [
+            metric
+            for metric in metric_config
+            if table_name in metric_config[metric]["tables"]
+        ]
+
+        # get current data
+        table_data = get_table_data(conn, table_name, query_start, query_end)
+
+        for metric_name in table_metrics:
+            metric_specs = metric_config[metric_name]
+            submit_data = {}
+            for row in table_data:
+                # aggregate methods
+                if metric_specs["aggregate"] == "fitbit_sleep":
+                    submit_data[row["id"]] = get_fitbit_sleep(
+                        row["start_time"],
+                        row["end_time"],
+                        data_fitbit[metric_specs["fitbit_type"]],
+                        metric_specs["fitbit_sleep_item"],
+                    )
+                elif metric_specs["aggregate"] == "fitbit_steps_sum":
+                    submit_data[row["id"]] = get_fitbit_steps_sum(
+                        row["start_time"],
+                        row["end_time"],
+                        data_fitbit[metric_specs["fitbit_type"]],
+                    )
+                elif metric_specs["aggregate"] == "fitbit_heart_mean":
+                    submit_data[row["id"]] = get_fitbit_heart_mean(
+                        row["start_time"],
+                        row["end_time"],
+                        data_fitbit[metric_specs["fitbit_type"]],
+                    )
+                elif metric_specs["aggregate"] == "fitbit_heart_percentile":
+                    submit_data[row["id"]] = get_fitbit_heart_percentile(
+                        row["start_time"],
+                        row["end_time"],
+                        data_fitbit[metric_specs["fitbit_type"]],
+                        metric_specs["fitbit_heart_percentile"],
+                    )
+                elif metric_specs["aggregate"] == "hass_state_to_select":
+                    submit_data[row["id"]] = get_predominant_state(
+                        row["start_time"],
+                        row["end_time"],
+                        data_homeassistant[metric_specs["hass_metric_id"]],
+                        table_data[-1][metric_name],
+                    )
+                elif metric_specs["aggregate"] == "hass_state_to_hours":
+                    submit_data[row["id"]] = get_state_duration_hours(
+                        row["start_time"],
+                        row["end_time"],
+                        data_homeassistant[metric_specs["hass_metric_id"]],
+                        table_data[-1][metric_name],
+                        metric_specs["select_states"],
+                    )
+            update_data(conn, table_name, metric_name, submit_data)
+
+    # close the connection, clean up
     conn.close()
-    print("All tables updated at", datetime.now(tz=timezone.utc).isoformat())
-    print("Sleeping for 15 minutes.")
+    print("All tables updated at", datetime.now().isoformat())
     return
 
 
@@ -435,4 +453,5 @@ if __name__ == "__main__":
     print("App started.")
     while True:
         main()
-        time.sleep(15 * 60)
+        sleep_minutes = int(os.environ.get("SANDIEGO_SLEEP_MINUTES"))
+        time.sleep(sleep_minutes * 60)

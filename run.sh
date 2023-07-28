@@ -9,6 +9,8 @@ docker run -d \
     --name sandiego-fetch \
     --network valinor_default \
     --env-file .env \
+    --env SANDIEGO_SLEEP_MINUTES=15 \
+    --env SANDIEGO_LOOKBACK_MINUTES=2880 \
     sandiego-fetch
 if [ "$1" = "-l" ]; then
     docker logs sandiego-fetch -f
