@@ -62,13 +62,16 @@ def get_data_hass(query_start, metric_data):
             if metric["provider"] == "homeassistant"
         }
     )
-    data_homeassistant_raw = query_hass(query_start, hass_metrics)
-    data_homeassistant_formatted = format_hass_timestamps(data_homeassistant_raw)
-    data_homeassistant = {
-        metric: data_homeassistant_formatted[hass_metrics.index(metric)]
-        for metric in hass_metrics
-    }
-    return data_homeassistant
+    if len(hass_metrics):
+        data_homeassistant_raw = query_hass(query_start, hass_metrics)
+        data_homeassistant_formatted = format_hass_timestamps(data_homeassistant_raw)
+        data_homeassistant = {
+            metric: data_homeassistant_formatted[hass_metrics.index(metric)]
+            for metric in hass_metrics
+        }
+        return data_homeassistant
+    else:
+        return {}
 
 
 def query_fitbit(url):
@@ -117,15 +120,6 @@ def query_fitbit(url):
 
     elif response.status_code == 429:
         raise Exception("Fitbit API rate-limited.", response.headers)
-
-    if (
-        response.headers["Fitbit-Rate-Limit-Remaining"]
-        < response.headers["Fitbit-Rate-Limit-Limit"] * 0.5
-    ):
-        print(
-            "Fitbit API calls remaining:",
-            response.headers["Fitbit-Rate-Limit-Remaining"],
-        )
 
     return response.json()
 
@@ -272,7 +266,7 @@ def get_fitbit_heart_rmssd(bucket_start, bucket_end, data_fitbit):
         return data_fitbit[bucket_start.date().isoformat()]["hrv"][0]["value"][
             "dailyRmssd"
         ]
-    except KeyError:
+    except IndexError:
         print("Warning: No HRV entry found for date", bucket_start.date().isoformat())
         return None
 
@@ -367,6 +361,10 @@ def main():
     provider_config = configuration_data["providers"]
     table_config = configuration_data["tables"]
     metric_config = configuration_data["metrics"]
+
+    backfill_metric = os.environ.get("SANDIEGO_BACKFILL_METRIC")
+    if backfill_metric in metric_config.keys():
+        metric_config = {backfill_metric: metric_config[backfill_metric]}
 
     lookback_minutes = int(os.environ.get("SANDIEGO_LOOKBACK_MINUTES"))
     lookback_duration = timedelta(minutes=lookback_minutes)
