@@ -15,7 +15,7 @@ providers:
                 url_end: /1d/1min.json
             hrv:
                 url_start: https://api.fitbit.com/1/user/-/hrv/date/
-                url_end: /all.json
+                url_end: .json
 
 tables:
     daily_summary:
@@ -138,7 +138,12 @@ metrics:
         fitbit_type: heart
         aggregate: fitbit_heart_percentile
         fitbit_heart_percentile: 90
-    # heart_rate_rmssd
+    heart_rate_rmssd:
+        tables:
+            - daily_summary
+        provider: fitbit
+        fitbit_type: hrv
+        aggregate: fitbit_heart_rmssd
 
     zone_hours_home:
         tables:

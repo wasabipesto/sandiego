@@ -257,9 +257,19 @@ def get_fitbit_heart_percentile(bucket_start, bucket_end, data_fitbit, percentil
         return None
 
 
+def get_fitbit_heart_rmssd(bucket_start, bucket_end, data_fitbit):
+    try:
+        return data_fitbit[bucket_start.date().isoformat()]["hrv"][0]["value"][
+            "dailyRmssd"
+        ]
+    except KeyError:
+        print("Warning: No HRV entry found for date", bucket_start.date().isoformat())
+        return None
+
+
 def get_fitbit_sleep(bucket_start, bucket_end, data_fitbit, fitbit_sleep_item):
     for query_date, query_data in data_fitbit.items():
-        if query_date == bucket_start.date().isoformat():
+        if query_date == bucket_start.date().isoformat() and len(query_data["sleep"]):
             sleep_item = query_data["sleep"][0]  # TODO: Get the longest sleep item
             if fitbit_sleep_item == "hours_inbed":
                 return sleep_item["timeInBed"] / 60
@@ -280,10 +290,6 @@ def get_fitbit_sleep(bucket_start, bucket_end, data_fitbit, fitbit_sleep_item):
             raise Exception("Sleep property not supported.")
     print("Warning: No sleep entry found for date", bucket_start.date().isoformat())
     return None
-
-
-def get_fitbit_isasleep(bucket_start, bucket_end, data_fitbit):
-    return False  # TODO
 
 
 def get_buckets(query_start, query_end, bucket_width, align_offset):
@@ -330,6 +336,7 @@ def get_table_data(conn, table, query_start, query_end):
 
 
 def update_data(conn, table, column, data):
+    # data = {key: value for key, value in data.items() if value is not None}
     print("Updating", len(data), "rows in", table, column)
     cursor = conn.cursor()
     statement = f"UPDATE {table} SET {column} = %s WHERE id = %s;"
@@ -418,6 +425,12 @@ def main():
                         row["end_time"],
                         data_fitbit[metric_specs["fitbit_type"]],
                         metric_specs["fitbit_heart_percentile"],
+                    )
+                elif metric_specs["aggregate"] == "fitbit_heart_rmssd":
+                    submit_data[row["id"]] = get_fitbit_heart_rmssd(
+                        row["start_time"],
+                        row["end_time"],
+                        data_fitbit[metric_specs["fitbit_type"]],
                     )
                 elif metric_specs["aggregate"] == "hass_state_to_select":
                     submit_data[row["id"]] = get_predominant_state(
