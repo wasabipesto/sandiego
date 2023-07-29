@@ -83,9 +83,6 @@ def query_fitbit(url):
         params={"timezone": "UTC"},
     )
 
-    if response.status_code == 429:
-        raise Exception("Fitbit API rate-limited.", response.headers)
-
     if response.status_code == 401:
         # request new key
         response = requests.post(
@@ -117,6 +114,19 @@ def query_fitbit(url):
             headers={"authorization": "Bearer " + fitbit_secrets["access_token"]},
             params={"timezone": "UTC"},
         )
+
+    elif response.status_code == 429:
+        raise Exception("Fitbit API rate-limited.", response.headers)
+
+    if (
+        response.headers["Fitbit-Rate-Limit-Remaining"]
+        < response.headers["Fitbit-Rate-Limit-Limit"] * 0.5
+    ):
+        print(
+            "Fitbit API calls remaining:",
+            response.headers["Fitbit-Rate-Limit-Remaining"],
+        )
+
     return response.json()
 
 
