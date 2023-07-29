@@ -366,7 +366,7 @@ def main():
     if backfill_metric in metric_config.keys():
         metric_config = {backfill_metric: metric_config[backfill_metric]}
 
-    lookback_minutes = int(os.environ.get("SANDIEGO_LOOKBACK_MINUTES"))
+    lookback_minutes = int(os.environ.get("SANDIEGO_LOOKBACK_MINUTES", 2 * 24 * 60))
     lookback_duration = timedelta(minutes=lookback_minutes)
     query_end = datetime.now(timezone.utc)
     query_start = query_end - lookback_duration
@@ -467,5 +467,5 @@ if __name__ == "__main__":
     print("App started.")
     while True:
         main()
-        sleep_minutes = int(os.environ.get("SANDIEGO_SLEEP_MINUTES"))
+        sleep_minutes = int(os.environ.get("SANDIEGO_SLEEP_MINUTES", "15"))
         time.sleep(sleep_minutes * 60)

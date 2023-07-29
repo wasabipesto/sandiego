@@ -206,7 +206,6 @@ metrics:
         provider: homeassistant
         hass_metric_id: sensor.justin_pixel5_detected_activity
         aggregate: hass_state_to_select
-        override: fitbit_is_asleep
 
     device_hours_phone:
         tables:
