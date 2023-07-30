@@ -176,30 +176,31 @@ def state_data_to_bucket_durations(bucket_start, bucket_end, state_data, last_st
     if len(changes_before_start) + len(changes_in_bucket) == 0:
         # no state changes before bucket_end, use last_state
         return {last_state: bucket_end - bucket_start}
-    if len(changes_in_bucket) == 0:
+    elif len(changes_in_bucket) == 0:
         # no state changes between bucket_start and bucket_end, use previous state
         return {changes_before_start[-1]["state"]: bucket_end - bucket_start}
-    # start counting time
-    time_map = {
-        changes_before_start[-1]["state"]: changes_in_bucket[0]["last_changed"]
-        - bucket_start
-    }
-    for row in changes_in_bucket:
-        if changes_in_bucket.index(row) + 1 == len(changes_in_bucket):
-            # last in list, duration extends to end of bucket
-            duration = bucket_end - row["last_changed"]
-        else:
-            # not last, duration extends to next change
-            duration = (
-                changes_in_bucket[changes_in_bucket.index(row) + 1]["last_changed"]
-                - row["last_changed"]
-            )
-        # add to counter
-        if not row["state"] in time_map:
-            time_map.update({row["state"]: duration})
-        else:
-            time_map[row["state"]] += duration
-    return time_map
+    else:
+        # start counting time
+        time_map = {
+            changes_before_start[-1]["state"]: changes_in_bucket[0]["last_changed"]
+            - bucket_start
+        }
+        for row in changes_in_bucket:
+            if changes_in_bucket.index(row) + 1 == len(changes_in_bucket):
+                # last in list, duration extends to end of bucket
+                duration = bucket_end - row["last_changed"]
+            else:
+                # not last, duration extends to next change
+                duration = (
+                    changes_in_bucket[changes_in_bucket.index(row) + 1]["last_changed"]
+                    - row["last_changed"]
+                )
+            # add to counter
+            if not row["state"] in time_map:
+                time_map.update({row["state"]: duration})
+            else:
+                time_map[row["state"]] += duration
+        return time_map
 
 
 def get_predominant_state(bucket_start, bucket_end, state_data, last_state):
@@ -223,6 +224,27 @@ def get_state_duration_hours(
         ]
     )
     return duration_sum / 3600
+
+
+def get_state_sensor_analog(
+    bucket_start, bucket_end, state_data, last_state, analog_aggregate_method
+):
+    time_map = state_data_to_bucket_durations(
+        bucket_start, bucket_end, state_data, last_state
+    )
+    if None in time_map.keys():
+        return None
+    elif analog_aggregate_method == "mean":
+        return (
+            sum([float(key) * value.total_seconds() for key, value in time_map.items()])
+            / (bucket_end - bucket_start).total_seconds()
+        )
+    elif analog_aggregate_method == "minimum":
+        return float(min(time_map.keys()))
+    elif analog_aggregate_method == "maximum":
+        return float(max(time_map.keys()))
+    else:
+        raise Exception("Aggregate method not supported.")
 
 
 def get_fitbit_steps_sum(bucket_start, bucket_end, data_fitbit):
@@ -454,6 +476,14 @@ def main():
                         data_homeassistant[metric_specs["hass_metric_id"]],
                         table_data[-1][metric_name],
                         metric_specs["select_states"],
+                    )
+                elif metric_specs["aggregate"] == "hass_state_sensor_analog":
+                    submit_data[row["id"]] = get_state_sensor_analog(
+                        row["start_time"],
+                        row["end_time"],
+                        data_homeassistant[metric_specs["hass_metric_id"]],
+                        table_data[-1][metric_name],
+                        metric_specs["analog_aggregate_method"],
                     )
             update_data(conn, table_name, metric_name, submit_data)
 
