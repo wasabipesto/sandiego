@@ -33,7 +33,13 @@ CREATE TABLE daily_summary (
     climate_indoor_temperature_low DECIMAL,
     climate_indoor_humidity_mean DECIMAL,
     climate_indoor_humidity_high DECIMAL,
-    climate_indoor_humidity_low DECIMAL
+    climate_indoor_humidity_low DECIMAL,
+    climate_outdoor_temperature_mean DECIMAL,
+    climate_outdoor_temperature_high DECIMAL,
+    climate_outdoor_temperature_low DECIMAL,
+    climate_outdoor_humidity_mean DECIMAL,
+    climate_outdoor_humidity_high DECIMAL,
+    climate_outdoor_humidity_low DECIMAL
 );
 --
 DROP TABLE IF EXISTS intraday_15m;
@@ -49,7 +55,9 @@ CREATE TABLE intraday_15m (
     device_hours_desktop DECIMAL,
     device_hours_tv DECIMAL,
     climate_indoor_temperature_mean DECIMAL,
-    climate_indoor_humidity_mean DECIMAL
+    climate_indoor_humidity_mean DECIMAL,
+    climate_outdoor_temperature_mean DECIMAL,
+    climate_outdoor_humidity_mean DECIMAL
 );
 --
 DROP TABLE IF EXISTS intraday_1m;

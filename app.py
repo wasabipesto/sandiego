@@ -232,13 +232,14 @@ def get_state_sensor_analog(
     time_map = state_data_to_bucket_durations(
         bucket_start, bucket_end, state_data, last_state
     )
-    if None in time_map.keys():
+    time_map.pop(None, None)
+    time_map.pop("unavailable", None)
+    if len(time_map) == 0:
         return None
     elif analog_aggregate_method == "mean":
-        return (
-            sum([float(key) * value.total_seconds() for key, value in time_map.items()])
-            / (bucket_end - bucket_start).total_seconds()
-        )
+        return sum(
+            [float(key) * value.total_seconds() for key, value in time_map.items()]
+        ) / sum([value.total_seconds() for key, value in time_map.items()])
     elif analog_aggregate_method == "minimum":
         return float(min(time_map.keys()))
     elif analog_aggregate_method == "maximum":

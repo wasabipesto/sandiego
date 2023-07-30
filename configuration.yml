@@ -281,3 +281,48 @@ metrics:
         hass_metric_id: sensor.nest_humidity
         aggregate: hass_state_sensor_analog
         analog_aggregate_method: minimum
+
+    climate_outdoor_temperature_mean:
+        tables:
+            - daily_summary
+            - intraday_15m
+        provider: homeassistant
+        hass_metric_id: sensor.owm_temperature
+        aggregate: hass_state_sensor_analog
+        analog_aggregate_method: mean
+    climate_outdoor_temperature_high:
+        tables:
+            - daily_summary
+        provider: homeassistant
+        hass_metric_id: sensor.owm_temperature
+        aggregate: hass_state_sensor_analog
+        analog_aggregate_method: maximum
+    climate_outdoor_temperature_low:
+        tables:
+            - daily_summary
+        provider: homeassistant
+        hass_metric_id: sensor.owm_temperature
+        aggregate: hass_state_sensor_analog
+        analog_aggregate_method: minimum
+    climate_outdoor_humidity_mean:
+        tables:
+            - daily_summary
+            - intraday_15m
+        provider: homeassistant
+        hass_metric_id: sensor.owm_humidity
+        aggregate: hass_state_sensor_analog
+        analog_aggregate_method: mean
+    climate_outdoor_humidity_high:
+        tables:
+            - daily_summary
+        provider: homeassistant
+        hass_metric_id: sensor.owm_humidity
+        aggregate: hass_state_sensor_analog
+        analog_aggregate_method: maximum
+    climate_outdoor_humidity_low:
+        tables:
+            - daily_summary
+        provider: homeassistant
+        hass_metric_id: sensor.owm_humidity
+        aggregate: hass_state_sensor_analog
+        analog_aggregate_method: minimum
