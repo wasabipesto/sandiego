@@ -6,7 +6,7 @@
 
 Sandiego is a project brought about by my frustration at having my data in different places and disliking the native interfaces for those apps. My primary qualm was with the Fitbit app, but the Home Assistant app has had its own issues. As my main two apps, these are the main data providers for this project. Older data has been scraped from Google Takeout and Prometheus. I wanted to have everything visible in one place and auto-updated multiple times per day.
 
-As part of this project I also wanted to be able to correct and insert data as necessary. This is possible with proper time series databases but I am mroe familiar with Postgres and I am happy entering data manually as required. In order to be able to easily cross-reference events and build correlations, all metrics are collated into a table based on sample rate. I have a daily summary table with a high-level overview and aggregations, and 15-minute and 1-minute tables for more granular data.
+As part of this project I also wanted to be able to correct and insert data as necessary. This is possible with proper time series databases but I am more familiar with Postgres and I am happy entering data manually as required. In order to be able to easily cross-reference events and build correlations, all metrics are collated into a table based on sample rate. I have a daily summary table with a high-level overview and aggregations, and 15-minute and 1-minute tables for more granular data.
 
 Grafana was the easy choice for visualizations. You can see an example of the dashboard I built with that data above. I hope they continue working on X-Y plots and add correlation features in the future.
 
