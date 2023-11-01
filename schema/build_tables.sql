@@ -34,6 +34,8 @@ CREATE TABLE daily_summary (
     climate_indoor_humidity_mean DECIMAL,
     climate_indoor_humidity_high DECIMAL,
     climate_indoor_humidity_low DECIMAL,
+    climate_indoor_heat_hours DECIMAL,
+    climate_indoor_cool_hours DECIMAL,
     climate_outdoor_temperature_mean DECIMAL,
     climate_outdoor_temperature_high DECIMAL,
     climate_outdoor_temperature_low DECIMAL,
@@ -56,6 +58,7 @@ CREATE TABLE intraday_15m (
     device_hours_tv DECIMAL,
     climate_indoor_temperature_mean DECIMAL,
     climate_indoor_humidity_mean DECIMAL,
+    climate_indoor_hvac_mode_select VARCHAR,
     climate_outdoor_temperature_mean DECIMAL,
     climate_outdoor_humidity_mean DECIMAL
 );

@@ -65,6 +65,8 @@ def get_data_hass(query_start, metric_data):
     if len(hass_metrics):
         data_homeassistant_raw = query_hass(query_start, hass_metrics)
         data_homeassistant_formatted = format_hass_timestamps(data_homeassistant_raw)
+        if len(hass_metrics) != len(data_homeassistant_formatted):
+            print("Not enough records returned from Home Assistant!")
         data_homeassistant = {
             metric: data_homeassistant_formatted[hass_metrics.index(metric)]
             for metric in hass_metrics
