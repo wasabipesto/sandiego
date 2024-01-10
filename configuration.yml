@@ -172,7 +172,7 @@ metrics:
         tables:
             - daily_summary
         provider: homeassistant
-        hass_metric_id: sensor.justin_pixel5_detected_activity
+        hass_metric_id: sensor.leandros_detected_activity
         aggregate: hass_state_to_hours
         select_states: 
             - still
@@ -180,7 +180,7 @@ metrics:
         tables:
             - daily_summary
         provider: homeassistant
-        hass_metric_id: sensor.justin_pixel5_detected_activity
+        hass_metric_id: sensor.leandros_detected_activity
         aggregate: hass_state_to_hours
         select_states: 
             - walking
@@ -188,7 +188,7 @@ metrics:
         tables:
             - daily_summary
         provider: homeassistant
-        hass_metric_id: sensor.justin_pixel5_detected_activity
+        hass_metric_id: sensor.leandros_detected_activity
         aggregate: hass_state_to_hours
         select_states: 
             - running
@@ -196,7 +196,7 @@ metrics:
         tables:
             - daily_summary
         provider: homeassistant
-        hass_metric_id: sensor.justin_pixel5_detected_activity
+        hass_metric_id: sensor.leandros_detected_activity
         aggregate: hass_state_to_hours
         select_states: 
             - in_vehicle
@@ -204,7 +204,7 @@ metrics:
         tables:
             - intraday_15m
         provider: homeassistant
-        hass_metric_id: sensor.justin_pixel5_detected_activity
+        hass_metric_id: sensor.leandros_detected_activity
         aggregate: hass_state_to_select
 
     device_hours_phone:
@@ -212,7 +212,7 @@ metrics:
             - daily_summary
             - intraday_15m
         provider: homeassistant
-        hass_metric_id: binary_sensor.justin_pixel5_device_locked
+        hass_metric_id: binary_sensor.leandros_device_locked
         aggregate: hass_state_to_hours
         select_states: 
             - "off" # off = unlocked
