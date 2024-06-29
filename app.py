@@ -67,6 +67,15 @@ def get_data_hass(query_start, metric_data):
         data_homeassistant_formatted = format_hass_timestamps(data_homeassistant_raw)
         if len(hass_metrics) != len(data_homeassistant_formatted):
             print("Not enough records returned from Home Assistant!")
+            print(
+                "Requested "
+                + str(len(hass_metrics))
+                + " records, received "
+                + str(len(data_homeassistant_formatted))
+            )
+            for metric in hass_metrics:
+                if not metric in str(data_homeassistant_formatted):
+                    print("Missing: " + metric)
         data_homeassistant = {
             metric: data_homeassistant_formatted[hass_metrics.index(metric)]
             for metric in hass_metrics
@@ -268,7 +277,7 @@ def get_fitbit_heart_mean(bucket_start, bucket_end, data_fitbit):
             if bucket_start < row_time <= bucket_end:
                 hr_list.append(row["value"])
     if len(hr_list):
-        return np.mean(hr_list)
+        return float(np.mean(hr_list))
     else:
         return None
 
@@ -281,7 +290,7 @@ def get_fitbit_heart_percentile(bucket_start, bucket_end, data_fitbit, percentil
             if bucket_start < row_time <= bucket_end:
                 hr_list.append(row["value"])
     if len(hr_list):
-        return np.percentile(hr_list, percentile)
+        return float(np.percentile(hr_list, percentile))
     else:
         return None
 

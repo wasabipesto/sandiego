@@ -216,15 +216,6 @@ metrics:
         aggregate: hass_state_to_hours
         select_states: 
             - "off" # off = unlocked
-    device_hours_desktop:
-        tables:
-            - daily_summary
-            - intraday_15m
-        provider: homeassistant
-        hass_metric_id: binary_sensor.demoux_x11_status
-        aggregate: hass_state_to_hours
-        select_states: 
-            - "on"
     device_hours_tv:
         tables:
             - daily_summary
