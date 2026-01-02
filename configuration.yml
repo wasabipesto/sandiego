@@ -151,7 +151,7 @@ metrics:
         provider: homeassistant
         hass_metric_id: person.justin
         aggregate: hass_state_to_hours
-        select_states: 
+        select_states:
             - home
     zone_hours_work:
         tables:
@@ -159,7 +159,7 @@ metrics:
         provider: homeassistant
         hass_metric_id: person.justin
         aggregate: hass_state_to_hours
-        select_states: 
+        select_states:
             - Work
     zone_select:
         tables:
@@ -167,67 +167,6 @@ metrics:
         provider: homeassistant
         hass_metric_id: person.justin
         aggregate: hass_state_to_select
-    
-    activity_hours_still:
-        tables:
-            - daily_summary
-        provider: homeassistant
-        hass_metric_id: sensor.leandros_detected_activity
-        aggregate: hass_state_to_hours
-        select_states: 
-            - still
-    activity_hours_walking:
-        tables:
-            - daily_summary
-        provider: homeassistant
-        hass_metric_id: sensor.leandros_detected_activity
-        aggregate: hass_state_to_hours
-        select_states: 
-            - walking
-    activity_hours_running:
-        tables:
-            - daily_summary
-        provider: homeassistant
-        hass_metric_id: sensor.leandros_detected_activity
-        aggregate: hass_state_to_hours
-        select_states: 
-            - running
-    activity_hours_vehicle:
-        tables:
-            - daily_summary
-        provider: homeassistant
-        hass_metric_id: sensor.leandros_detected_activity
-        aggregate: hass_state_to_hours
-        select_states: 
-            - in_vehicle
-    activity_select:
-        tables:
-            - intraday_15m
-        provider: homeassistant
-        hass_metric_id: sensor.leandros_detected_activity
-        aggregate: hass_state_to_select
-
-    device_hours_phone:
-        tables:
-            - daily_summary
-            - intraday_15m
-        provider: homeassistant
-        hass_metric_id: binary_sensor.leandros_device_locked
-        aggregate: hass_state_to_hours
-        select_states: 
-            - "off" # off = unlocked
-#    device_hours_tv:
-#        tables:
-#            - daily_summary
-#            - intraday_15m
-#        provider: homeassistant
-#        hass_metric_id: media_player.fireplace_tv
-#        aggregate: hass_state_to_hours
-#        select_states: 
-#            - "on"
-#            - paused
-#            - playing
-
     climate_indoor_temperature_mean:
         tables:
             - daily_summary
@@ -272,48 +211,3 @@ metrics:
         hass_metric_id: sensor.nest_humidity
         aggregate: hass_state_sensor_analog
         analog_aggregate_method: minimum
-
-#    climate_outdoor_temperature_mean:
-#        tables:
-#            - daily_summary
-#            - intraday_15m
-#        provider: homeassistant
-#        hass_metric_id: sensor.owm_temperature
-#        aggregate: hass_state_sensor_analog
-#        analog_aggregate_method: mean
-#    climate_outdoor_temperature_high:
-#        tables:
-#            - daily_summary
-#        provider: homeassistant
-#        hass_metric_id: sensor.owm_temperature
-#        aggregate: hass_state_sensor_analog
-#        analog_aggregate_method: maximum
-#    climate_outdoor_temperature_low:
-#        tables:
-#            - daily_summary
-#        provider: homeassistant
-#        hass_metric_id: sensor.owm_temperature
-#        aggregate: hass_state_sensor_analog
-#        analog_aggregate_method: minimum
-#    climate_outdoor_humidity_mean:
-#        tables:
-#            - daily_summary
-#            - intraday_15m
-#        provider: homeassistant
-#        hass_metric_id: sensor.owm_humidity
-#        aggregate: hass_state_sensor_analog
-#        analog_aggregate_method: mean
-#    climate_outdoor_humidity_high:
-#        tables:
-#            - daily_summary
-#        provider: homeassistant
-#        hass_metric_id: sensor.owm_humidity
-#        aggregate: hass_state_sensor_analog
-#        analog_aggregate_method: maximum
-#    climate_outdoor_humidity_low:
-#        tables:
-#            - daily_summary
-#        provider: homeassistant
-#        hass_metric_id: sensor.owm_humidity
-#        aggregate: hass_state_sensor_analog
-#        analog_aggregate_method: minimum
