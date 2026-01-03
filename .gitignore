@@ -1,3 +1,5 @@
+postgres_data
+postgres_backups
 .env
 .gitsecret/keys/random_seed
 *.ipynb
