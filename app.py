@@ -308,7 +308,10 @@ def get_fitbit_heart_rmssd(bucket_start, bucket_end, data_fitbit):
 def get_fitbit_sleep(bucket_start, bucket_end, data_fitbit, fitbit_sleep_item):
     for query_date, query_data in data_fitbit.items():
         if query_date == bucket_start.date().isoformat() and len(query_data["sleep"]):
-            sleep_item = query_data["sleep"][0]  # TODO: Get the longest sleep item
+            # Get the longest sleep item based on minutesAsleep
+            sleep_item = max(
+                query_data["sleep"], key=lambda x: x.get("minutesAsleep", 0)
+            )
             if fitbit_sleep_item == "hours_inbed":
                 return sleep_item["timeInBed"] / 60
             elif fitbit_sleep_item == "hours_asleep":
