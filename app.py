@@ -2,6 +2,7 @@ import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import psycopg2
@@ -65,21 +66,16 @@ def get_data_hass(query_start, metric_data):
     if len(hass_metrics):
         data_homeassistant_raw = query_hass(query_start, hass_metrics)
         data_homeassistant_formatted = format_hass_timestamps(data_homeassistant_raw)
-        if len(hass_metrics) != len(data_homeassistant_formatted):
-            print("Not enough records returned from Home Assistant!")
-            print(
-                "Requested "
-                + str(len(hass_metrics))
-                + " records, received "
-                + str(len(data_homeassistant_formatted))
-            )
-            for metric in hass_metrics:
-                if not metric in str(data_homeassistant_formatted):
-                    print("Missing: " + metric)
+        # Home Assistant drops entities that have no history in the window (e.g. an
+        # entity unchanged for longer than the recorder keeps), so key by entity id
         data_homeassistant = {
-            metric: data_homeassistant_formatted[hass_metrics.index(metric)]
-            for metric in hass_metrics
+            entity[0]["entity_id"]: entity
+            for entity in data_homeassistant_formatted
+            if len(entity)
         }
+        for metric in hass_metrics:
+            if metric not in data_homeassistant:
+                print("Warning: No history returned from Home Assistant for", metric)
         return data_homeassistant
     else:
         return {}
@@ -227,6 +223,9 @@ def get_state_duration_hours(
     time_map = state_data_to_bucket_durations(
         bucket_start, bucket_end, state_data, last_state
     )
+    if list(time_map.keys()) == [None]:
+        # no known state for this bucket
+        return None
     duration_sum = sum(
         [
             time_map[state].total_seconds()
@@ -245,6 +244,7 @@ def get_state_sensor_analog(
     )
     time_map.pop(None, None)
     time_map.pop("unavailable", None)
+    time_map.pop("unknown", None)
     if len(time_map) == 0:
         return None
     elif analog_aggregate_method == "mean":
@@ -266,7 +266,10 @@ def get_fitbit_steps_sum(bucket_start, bucket_end, data_fitbit):
             row_time = datetime.fromisoformat(query_date + "T" + row["time"] + "Z")
             if bucket_start < row_time <= bucket_end:
                 steps_list.append(row["value"])
-    return sum(steps_list)
+    if len(steps_list):
+        return sum(steps_list)
+    else:
+        return None
 
 
 def get_fitbit_heart_mean(bucket_start, bucket_end, data_fitbit):
@@ -305,6 +308,12 @@ def get_fitbit_heart_rmssd(bucket_start, bucket_end, data_fitbit):
         return None
 
 
+def parse_fitbit_local_time(value):
+    # Fitbit sleep logs report local wall time with no offset
+    local_timezone = ZoneInfo(os.environ.get("TZ", "UTC"))
+    return datetime.fromisoformat(value).replace(tzinfo=local_timezone)
+
+
 def get_fitbit_sleep(bucket_start, bucket_end, data_fitbit, fitbit_sleep_item):
     for query_date, query_data in data_fitbit.items():
         if query_date == bucket_start.date().isoformat() and len(query_data["sleep"]):
@@ -325,9 +334,9 @@ def get_fitbit_sleep(bucket_start, bucket_end, data_fitbit, fitbit_sleep_item):
             elif fitbit_sleep_item == "hours_wake":
                 return sleep_item["levels"]["summary"]["wake"]["minutes"] / 60
             elif fitbit_sleep_item == "time_start":
-                return datetime.fromisoformat(sleep_item["startTime"] + "Z")
+                return parse_fitbit_local_time(sleep_item["startTime"])
             elif fitbit_sleep_item == "time_end":
-                return datetime.fromisoformat(sleep_item["endTime"] + "Z")
+                return parse_fitbit_local_time(sleep_item["endTime"])
             raise Exception("Sleep property not supported.")
     print("Warning: No sleep entry found for date", bucket_start.date().isoformat())
     return None
@@ -435,6 +444,10 @@ def main():
             for metric in metric_config
             if table_name in metric_config[metric]["tables"]
             and provider_config[metric_config[metric]["provider"]]["enabled"]
+            and (
+                metric_config[metric]["provider"] != "homeassistant"
+                or metric_config[metric]["hass_metric_id"] in data_homeassistant
+            )
         ]
 
         # get current data

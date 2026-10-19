@@ -2,7 +2,7 @@ providers:
     homeassistant:
         enabled: true
     fitbit:
-        enabled: true
+        enabled: false
         url_schemas:
             sleep:
                 url_start: https://api.fitbit.com/1.2/user/-/sleep/date/
@@ -145,28 +145,6 @@ metrics:
         fitbit_type: hrv
         aggregate: fitbit_heart_rmssd
 
-    zone_hours_home:
-        tables:
-            - daily_summary
-        provider: homeassistant
-        hass_metric_id: person.justin
-        aggregate: hass_state_to_hours
-        select_states:
-            - home
-    zone_hours_work:
-        tables:
-            - daily_summary
-        provider: homeassistant
-        hass_metric_id: person.justin
-        aggregate: hass_state_to_hours
-        select_states:
-            - Work
-    zone_select:
-        tables:
-            - intraday_15m
-        provider: homeassistant
-        hass_metric_id: person.justin
-        aggregate: hass_state_to_select
     climate_indoor_temperature_mean:
         tables:
             - daily_summary
