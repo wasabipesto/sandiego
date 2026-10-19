@@ -10,6 +10,10 @@ import requests
 import yaml
 from psycopg2.extensions import AsIs
 
+# shorter segments (naps) are not counted as the night's sleep
+SLEEP_SEGMENT_MIN_DURATION = timedelta(hours=3)
+SLEEP_SEGMENT_MERGE_GAP = timedelta(minutes=60)
+
 
 def get_database_connection():
     return psycopg2.connect(
@@ -32,6 +36,8 @@ def query_hass(query_start, sensors):
         params={
             "filter_entity_id": sensors_string,
             "end_time": datetime.now(timezone.utc).isoformat(),
+            # keep attribute-only updates, e.g. a sleep segment with the same duration
+            "significant_changes_only": "0",
             # "no_attributes": True,
         },
     )
@@ -257,6 +263,49 @@ def get_state_sensor_analog(
         return float(max(time_map.keys()))
     else:
         raise Exception("Aggregate method not supported.")
+
+
+def get_hass_sleep_segments(state_data):
+    # each new segment from the phone's sleep API arrives as a state change
+    segments = {}
+    for row in state_data:
+        attributes = row.get("attributes", {})
+        if attributes.get("status") != "successful" or "start" not in attributes:
+            continue
+        segments[attributes["start"]] = (
+            datetime.fromtimestamp(attributes["start"] / 1000, timezone.utc),
+            datetime.fromtimestamp(attributes["end"] / 1000, timezone.utc),
+        )
+    # join segments split by a short wake-up
+    merged = []
+    for start, end in sorted(segments.values()):
+        if merged and start - merged[-1][1] < SLEEP_SEGMENT_MERGE_GAP:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def get_hass_sleep(bucket_start, bucket_end, state_data, hass_sleep_item):
+    # like Fitbit's dateOfSleep, a night belongs to the day it ends
+    local_timezone = ZoneInfo(os.environ.get("TZ", "UTC"))
+    bucket_date = bucket_start.astimezone(local_timezone).date()
+    nights = [
+        (start, end)
+        for start, end in get_hass_sleep_segments(state_data)
+        if end.astimezone(local_timezone).date() == bucket_date
+        and end - start >= SLEEP_SEGMENT_MIN_DURATION
+    ]
+    if not len(nights):
+        return None
+    start, end = max(nights, key=lambda x: x[1] - x[0])
+    if hass_sleep_item == "hours_inbed":
+        return (end - start).total_seconds() / 3600
+    elif hass_sleep_item == "time_start":
+        return start
+    elif hass_sleep_item == "time_end":
+        return end
+    raise Exception("Sleep property not supported.")
 
 
 def get_fitbit_steps_sum(bucket_start, bucket_end, data_fitbit):
@@ -513,6 +562,18 @@ def main():
                         table_data[-1][metric_name],
                         metric_specs["analog_aggregate_method"],
                     )
+                elif metric_specs["aggregate"] == "hass_sleep":
+                    submit_data[row["id"]] = get_hass_sleep(
+                        row["start_time"],
+                        row["end_time"],
+                        data_homeassistant[metric_specs["hass_metric_id"]],
+                        metric_specs["hass_sleep_item"],
+                    )
+            if metric_specs["aggregate"] == "hass_sleep":
+                # nights without a segment may be filled from another source
+                submit_data = {
+                    key: value for key, value in submit_data.items() if value is not None
+                }
             update_data(conn, table_name, metric_name, submit_data)
 
     # close the connection, clean up

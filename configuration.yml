@@ -32,10 +32,10 @@ metrics:
     sleep_hours_inbed:
         tables:
             - daily_summary
-        provider: fitbit
-        fitbit_type: sleep
-        aggregate: fitbit_sleep
-        fitbit_sleep_item: hours_inbed
+        provider: homeassistant
+        hass_metric_id: sensor.leandros_sleep_segment
+        aggregate: hass_sleep
+        hass_sleep_item: hours_inbed
     sleep_hours_asleep:
         tables:
             - daily_summary
@@ -74,17 +74,17 @@ metrics:
     sleep_time_start:
         tables:
             - daily_summary
-        provider: fitbit
-        fitbit_type: sleep
-        aggregate: fitbit_sleep
-        fitbit_sleep_item: time_start
+        provider: homeassistant
+        hass_metric_id: sensor.leandros_sleep_segment
+        aggregate: hass_sleep
+        hass_sleep_item: time_start
     sleep_time_end:
         tables:
             - daily_summary
-        provider: fitbit
-        fitbit_type: sleep
-        aggregate: fitbit_sleep
-        fitbit_sleep_item: time_end
+        provider: homeassistant
+        hass_metric_id: sensor.leandros_sleep_segment
+        aggregate: hass_sleep
+        hass_sleep_item: time_end
 
     steps_count_sum:
         tables:
