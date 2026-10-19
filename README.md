@@ -111,6 +111,7 @@ The `metrics` item defines all metrics to be downloaded, aggregated, and saved i
     - `fitbit_heart_rmssd`
     - `hass_state_to_select`
     - `hass_state_to_hours`
+    - `hass_sleep`
 
 Additional fields, as required by the aggregate function:
 - `fitbit_sleep` requires `fitbit_sleep_item`, which must be one of:
@@ -124,6 +125,7 @@ Additional fields, as required by the aggregate function:
     - `time_end`
 - `fitbit_heart_percentile` requires `fitbit_heart_percentile`, which must be a number between 0 and 100.
 - `hass_state_to_hours` requires `select_states`, which must be a list of states to be defined as "active" for that metric.
+- `hass_sleep` reads a Home Assistant Companion App sleep segment sensor and requires `hass_sleep_item`, which must be one of `hours_inbed`, `time_start` or `time_end`. Segments less than an hour apart are joined, and the longest segment of at least 3 hours ending on a bucket's date is used. Buckets with no segment are left unchanged.
 
 ### Secrets Files
 
